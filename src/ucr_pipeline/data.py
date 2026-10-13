@@ -64,34 +64,36 @@ def list_available_ucr(ucr_path):
 
 def preprocess_ucr(train_data, test_data):
     """
-    UCR 数据预处理
+    数据预处理（支持单变量与多变量）
 
-    关键：用训练集的 mean/std 标准化测试集（防止数据泄漏）
+    关键点：
+    1. 单变量 (T,) → 视为 (T, 1)
+    2. 多变量 (T, C) → **按通道** 标准化（axis=0），避免跨通道量纲互相污染
+    3. 用训练集统计量标准化测试集（防数据泄漏）
 
     参数:
-        train_data: 训练数据
-        test_data: 测试数据
+        train_data: 训练数据 (T,) 或 (T, C)
+        test_data: 测试数据 (T,) 或 (T, C)
     返回:
         (train_norm, test_norm, scaler)
     """
     train_data = np.asarray(train_data, dtype=np.float32)
     test_data = np.asarray(test_data, dtype=np.float32)
 
-    # 确保是一维序列
-    if train_data.ndim > 1:
-        train_data = train_data.squeeze()
-    if test_data.ndim > 1:
-        test_data = test_data.squeeze()
+    # 统一成 (T, C)
+    if train_data.ndim == 1:
+        train_data = train_data[:, np.newaxis]
+    if test_data.ndim == 1:
+        test_data = test_data[:, np.newaxis]
 
-    # 处理 NaN
-    train_data = np.nan_to_num(train_data, nan=0.0)
-    test_data = np.nan_to_num(test_data, nan=0.0)
+    # 处理 NaN / Inf
+    train_data = np.nan_to_num(train_data, nan=0.0, posinf=0.0, neginf=0.0)
+    test_data = np.nan_to_num(test_data, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # 用训练集统计量标准化（防止数据泄漏）
-    mean = train_data.mean()
-    std = train_data.std()
-    if std < 1e-8:
-        std = 1.0
+    # 按通道（axis=0）统计，单变量时等价于全局统计
+    mean = train_data.mean(axis=0, keepdims=True)  # (1, C)
+    std = train_data.std(axis=0, keepdims=True)    # (1, C)
+    std = np.where(std < 1e-8, 1.0, std)
 
     train_norm = (train_data - mean) / std
     test_norm = (test_data - mean) / std
@@ -100,19 +102,70 @@ def preprocess_ucr(train_data, test_data):
     train_norm = np.clip(train_norm, -5, 5)
     test_norm = np.clip(test_norm, -5, 5)
 
-    scaler = {"mean": float(mean), "std": float(std)}
-    print(f"[预处理] mean={mean:.4f}, std={std:.4f}")
+    scaler = {
+        "mean": mean.squeeze().tolist() if mean.shape[1] > 1 else float(mean[0, 0]),
+        "std": std.squeeze().tolist() if std.shape[1] > 1 else float(std[0, 0]),
+        "n_features": int(train_norm.shape[1]),
+    }
+    if scaler["n_features"] == 1:
+        print(f"[预处理] mean={mean[0,0]:.4f}, std={std[0,0]:.4f}")
+    else:
+        print(f"[预处理] 多变量 C={scaler['n_features']}, mean/std 按通道计算")
     print(f"[预处理] train_range=[{train_norm.min():.2f}, {train_norm.max():.2f}]")
     print(f"[预处理] test_range=[{test_norm.min():.2f}, {test_norm.max():.2f}]")
 
     return train_norm, test_norm, scaler
 
 
+def load_mv_dataset(name, data_root):
+    """
+    加载多变量数据集
+
+    参数:
+        name: 数据集名（SMAP / MSL / SMD）
+        data_root: data/ 根目录
+    返回:
+        (train_data, test_data, test_label)，形状 (T, C) / (T, C) / (T,)
+    """
+    name = name.upper()
+    npy_dir = os.path.join(data_root, name)
+
+    if os.path.isdir(npy_dir) and os.path.exists(os.path.join(npy_dir, f"{name}_train.npy")):
+        train = np.load(os.path.join(npy_dir, f"{name}_train.npy"))
+        test = np.load(os.path.join(npy_dir, f"{name}_test.npy"))
+        label_path = os.path.join(npy_dir, f"{name}_test_label.npy")
+        label = np.load(label_path) if os.path.exists(label_path) else None
+    else:
+        print(f"[数据] 找不到多变量数据集 {name}（期望 {npy_dir}/{name}_train.npy）")
+        return None, None, None
+
+    train = np.asarray(train, dtype=np.float32)
+    test = np.asarray(test, dtype=np.float32)
+    if train.ndim == 1:
+        train = train[:, np.newaxis]
+    if test.ndim == 1:
+        test = test[:, np.newaxis]
+    if label is not None:
+        label = np.asarray(label).astype(np.int32).squeeze()
+
+    print(f"[数据] {name}: train={train.shape}, test={test.shape}", end="")
+    if label is not None:
+        print(f", label={label.shape} (异常比例={np.mean(label):.4f})")
+    else:
+        print(" (无标签)")
+
+    return train, test, label
+
+
 def analyze_dataset_characteristics(data, labels=None):
-    """分析数据集基本特性"""
+    """分析数据集基本特性（支持多变量）"""
     data = np.asarray(data)
+    if data.ndim == 1:
+        data = data[:, np.newaxis]
+
     info = {
         "length": len(data),
+        "n_features": int(data.shape[1]),
         "mean": float(np.mean(data)),
         "std": float(np.std(data)),
         "min": float(np.min(data)),

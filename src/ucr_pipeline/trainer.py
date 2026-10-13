@@ -50,7 +50,7 @@ class UCRTrainer:
         训练模型
 
         参数:
-            train_data: 标准化后的训练序列 (1D numpy array)
+            train_data: 标准化后的训练序列 (T,) 或 (T, C)
             epochs / batch_size / learning_rate / patience: 训练超参
             window_size: 滑窗长度
             val_data: 可选验证集
@@ -180,15 +180,20 @@ class UCRTrainer:
         新代码批量推理 + scatter_add 向量化聚合。
 
         参数:
-            test_data: 标准化后的测试序列 (1D numpy array)
+            test_data: 标准化后的测试序列 (T,) 或 (T, C)
             window_size / stride: 滑窗参数
             batch_size: 推理批量（默认 256，GPU 上可更大）
         返回:
             anomaly_scores: (len(test_data),) 每个时间点的异常分数
+                （多变量时分数 = 各通道分数的 max 聚合）
         """
         self.model.eval()
         n = len(test_data)
         data = np.asarray(test_data, dtype=np.float32)
+        # 统一成 (T, C)：单变量 (T,) → (T, 1)
+        if data.ndim == 1:
+            data = data[:, np.newaxis]
+        n_features = data.shape[1]
 
         # 生成所有窗口的起始索引
         starts = np.arange(0, n - window_size + 1, stride)
@@ -201,22 +206,25 @@ class UCRTrainer:
         count = np.zeros(n, dtype=np.float64)
 
         n_windows = len(starts)
-        print(f"[检测] {n_windows} 个窗口, batch_size={batch_size}, device={self.device}")
+        print(
+            f"[检测] {n_windows} 个窗口, 通道={n_features}, "
+            f"batch_size={batch_size}, device={self.device}"
+        )
 
         t0 = time.time()
         for batch_start in range(0, n_windows, batch_size):
             batch_ends = min(batch_start + batch_size, n_windows)
             window_starts = starts[batch_start:batch_ends]
 
-            # 批量构造窗口: (B, window_size, 1)
-            windows = np.stack(
-                [data[s : s + window_size] for s in window_starts]
-            )  # (B, W)
-            windows = windows[:, :, np.newaxis]  # (B, W, 1)
-            x = torch.from_numpy(windows).to(self.device, non_blocking=True)
+            # 批量构造窗口: (B, W, C)
+            windows = np.stack([data[s : s + window_size] for s in window_starts])
+            x = torch.from_numpy(np.ascontiguousarray(windows)).float().to(
+                self.device, non_blocking=True
+            )
 
             output = self.model(x)
-            fused = output["fused_score"]  # (B, W)
+            # fused_score 已在 model 内做过 max 聚合 → (B, W)
+            fused = output["fused_score"]
             fused_np = fused.cpu().numpy()  # (B, W)
 
             # 向量化分数分配：每个窗口的中间 1/3 区间分配平均分数

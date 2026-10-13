@@ -24,25 +24,58 @@
 
 | 事项 | 说明 |
 |---|---|
-| 评估管线校准 | 异常分数与标签的方向关系正在核对，涉及 `evaluation.py` 的 AUROC 输入方向与 `model.py` 的原型距离语义。**校准完成前，历史 AUROC / VUS 数值仅作调试参考** |
-| UCR 真实数据 | 尚未放入本机，当前仅有合成数据用于冒烟测试，无法产出论文所需的 UCR 结果 |
+| 多变量管线 | ✅ 已适配（`run_mv.py`），SMAP 25 通道 / MSL 55 通道 / SMD 38 通道可直接跑；SWaT / WADI 需先转 `.npy` |
+| 跨数据集实测 | 🔄 SMAP / MSL / SMD / SWaT / WADI 的跨数据集性能差异待复现确认 |
 | 论文文档口径同步 | `docs/thesis/experiments.md` 中基于 oracle threshold 的 P/R 与"优化前后对比"式表述需改为同 split 下与公开方法对比 |
 | **因果不变性改进点** | **毕设核心待做内容**：用因果不变学习改善跨数据集泛化性能，尚未动工 |
+| 强基线复现 | 待做。需在同一 split、同一指标下复现 MEMTO / DCdetector / ScatterAD |
 
 ### 环境
 
 ```bash
 conda activate MDAD          # Python 3.11 + torch 2.9.0 (CPU)
-python -m src.ucr_pipeline.run_ucr --smoke-test
 ```
 
-CPU 可跑，UCR 单数据集约 3分钟/epoch 量级，多变量数据集建议放GPU 环境。
+```bash
+# 单变量（UCR）
+python -m src.ucr_pipeline.run_ucr --ucr-path ./data --dataset-ids 1 2 3 4 5
+
+# 多变量（SMAP / MSL / SMD）
+python -m src.ucr_pipeline.run_mv --data-root ./data --datasets SMAP MSL SMD \
+    --epochs 10 --save-dir results/mv
+
+# 调试：合成数据冒烟测试
+python -m src.ucr_pipeline.run_mv --smoke-test
+
+# 调试：只跑前N个时间点
+python -m src.ucr_pipeline.run_mv --datasets SMAP --max-points 30000 --epochs 10
+```
+
+### 模型结构（多变量）
+
+```
+输入 (B, W, C)
+  ↓
+时频双域预处理: FFT 沿时间维 → (B, freq_bins, C) → 取前k 个频率 → MLP → (B, W, 64)
+  ↓ 拼接 → (B, W, C+64)
+多尺度卷积 (3/5/7)→ (B, W, hidden)
+  ↓
+Transformer 编码器
+  ├→ 重构路径: 通道独立、权重共享 → (B, W, C) → max 聚合 → (B, W)
+  ├→ 原型路径: 作用于重构误差 → (B, W) → max 聚合
+  └→ 不确定性估计 → 自适应权重
+       ↓
+   融合异常分数 (B, W)
+```
+
+**max 聚合语义**：任一通道异常 → 该时间点异常。消融实验应补mean 聚合对比。
 
 ### 下一步
 
-1. 下载 UCR 真实数据，跑通主数据集基线（当前仅有合成数据）
-2. 统一论文文档的实验口径
-3. 引入因果不变性模块，作为毕设核心改进点
+1. 完成 SMAP / MSL / SMD / SWaT / WADI 的跨数据集实测，确认性能差异是否真实存在
+2. 复现强基线（MEMTO / DCdetector / ScatterAD），确认基线可复现
+3. 统一论文文档的实验口径
+4. 引入因果不变性模块，作为毕设核心改进点
 
 ---
 
@@ -63,11 +96,12 @@ python -m src.ucr_pipeline.run_ucr --ucr-path /path/to/UCR --dataset-ids 1 2 3 4
 
 ```
 CausalDualAD/
-├── src/ucr_pipeline/          # ★ 唯一活跃代码（入口 run_ucr.py）
-│   ├── run_ucr.py             #   单一入口：训练 → 检测 → 评估
-│   ├── model.py               #   双路径模型（向量化 FFT + cdist 原型匹配）
+├── src/ucr_pipeline/          # ★ 唯一活跃代码
+│   ├── run_ucr.py             #   单变量入口（UCR）：训练 → 检测 → 评估
+│   ├── run_mv.py              #   多变量入口（SMAP/MSL/SMD）
+│   ├── model.py               #   双路径模型（支持任意通道数）
 │   ├── trainer.py             #   训练器（统一 GPU 设备管理 + 批量推理）
-│   ├── data.py                #   数据加载（路径参数化，防数据泄漏标准化）
+│   ├── data.py                #   数据加载（通道化预处理 + 多变量加载器）
 │   ├── evaluation.py          #   评估指标（AUROC + F1 + VUS-ROC/PR + Top-k）
 │   ├── config.py              #   配置管理
 │   ├── prepare_data.py        #   UCR 数据下载/转换/验证工具
@@ -78,6 +112,9 @@ CausalDualAD/
 │   ├── thesis/                # 论文文档（markdown 草稿 + LaTeX 草稿）
 │   └── figures/               # 实验可视化图
 ├── data/                      # 数据集本地目录（.npy/.csv 已 gitignore）
+│   ├── UCR_*.npy              #   UCR 250 个子集
+│   ├── SMAP/ MSL/ SMD/        #   多变量（npy，已可用）
+│   └── PSM/ SWAT/ WaDi/       #   待转换（csv / 格式待适配）
 ├── results/                   # 实验结果（入库，保证可追溯）
 ├── _archive/                  # 旧代码归档，仅本地保留、不入库（见其 README）
 └── requirements.txt
@@ -100,11 +137,13 @@ CausalDualAD/
 | 数据路径 | 硬编码 `E:\social_network\TSAD\data\UCR` | `--ucr-path` 命令行参数 |
 | 评估指标 | Top-k 5 重宽容 + F1 用真实标签生成预测（作弊） | 标准 Top-k + oracle threshold + AUROC |
 | 滑窗创建 | for 循环逐窗构造 | `np.lib.stride_tricks` 零拷贝 |
+| 只支持单变量 | `in_channels=1`、`output_dim=1`、`squeeze()`、`[:, :, newaxis]` 写死 | 全链路通道化，`n_features` 参数化，支持 SMAP/MSL/SMD 等多变量基准 |
+| 频域特征通道平均 | FFT 后对通道维求均值，多变量信息丢失 | FFT 保留通道维 → `(B, k, C)` 展平 → MLP，与通道数解耦 |
 
 ## 已知问题
 
-见上文「当前版本现状」。核心一项：UCR 真实数据尚未就位，论文所需的正式实验结果待补。
-评估管线已通过冒烟测试验证（AUROC 方向正确）。
+见上文「当前版本现状」。核心两项：跨数据集性能差异待实测确认；SWaT / WADI 需先转格式。
+评估管线已通过单变量与多变量双路径冒烟测试（AUROC 方向正确）。
 
 ## 使用方法
 

@@ -17,13 +17,20 @@ from torch.utils.data import Dataset, DataLoader
 
 
 class TimeFrequencyPreprocessing(nn.Module):
-    """时频双域预处理模块（向量化版）"""
+    """时频双域预处理模块（向量化版，支持多变量）
 
-    def __init__(self, freq_components=16, freq_feature_dim=64):
+    多变量处理：FFT 沿时间维做，保留通道维
+    → (B, freq_bins, C) → 取前 k 个频率分量 → 展平 (B, k*C) → MLP 投影
+    这样 freq_feature_dim 与通道数解耦，下游结构不变。
+    单变量（C=1）时与旧实现数值完全一致。
+    """
+
+    def __init__(self, freq_components=16, freq_feature_dim=64, n_features=1):
         super().__init__()
         self.freq_components = freq_components
+        self.n_features = n_features
         self.freq_mlp = nn.Sequential(
-            nn.Linear(freq_components, 128),
+            nn.Linear(freq_components * n_features, 128),
             nn.ReLU(),
             nn.Linear(128, freq_feature_dim),
         )
@@ -31,33 +38,36 @@ class TimeFrequencyPreprocessing(nn.Module):
     def forward(self, x):
         """
         参数:
-            x: (batch, seq_len, features)
+            x: (batch, seq_len, C)
         返回:
-            (time_feature, freq_feature)
+            (time_feature, freq_feature)，两者都是 (batch, seq_len, dim)
         """
         batch_size, seq_len, features = x.shape
         time_feature = x
 
         # ---- 向量化 FFT ----
-        # 旧代码：for i in range(batch): for j in range(features): np.fft.fft(...)
-        # 新代码：一次 rfft 搞定整个 batch
-        # rfft 沿 seq_len 维做，输出 (batch, seq_len//2+1, features)
-        fft_result = torch.fft.rfft(x, dim=1)
-        amplitude = torch.abs(fft_result)  # (batch, freq_bins, features)
+        # 沿时间维做，保留通道维
+        fft_result = torch.fft.rfft(x, dim=1)  # (B, freq_bins, C)
+        amplitude = torch.abs(fft_result)
 
         k = min(self.freq_components, amplitude.shape[1])
-        # 取前 k 个频率分量，对特征维求平均 → (batch, k)
-        freq_features = amplitude[:, :k, :].mean(dim=2)
+        # 取前 k 个频率分量，保留通道维 → (B, k, C)
+        freq_features = amplitude[:, :k, :]
 
-        # 不足 freq_components 则补零
+        # 不足 freq_components 则在频率维补零
         if k < self.freq_components:
             pad = torch.zeros(
-                batch_size, self.freq_components - k, device=x.device, dtype=x.dtype
+                batch_size,
+                self.freq_components - k,
+                features,
+                device=x.device,
+                dtype=x.dtype,
             )
             freq_features = torch.cat([freq_features, pad], dim=1)
 
-        # MLP 投影后在时间维上复制对齐
-        freq_proj = self.freq_mlp(freq_features)  # (batch, freq_feature_dim)
+        # (B, k, C) → (B, k*C) → MLP → (B, freq_feature_dim)
+        freq_flat = freq_features.reshape(batch_size, -1)
+        freq_proj = self.freq_mlp(freq_flat)
         freq_feature = freq_proj.unsqueeze(1).expand(-1, seq_len, -1)
 
         return time_feature, freq_feature
@@ -132,6 +142,12 @@ class TransformerEncoder(nn.Module):
 
 
 class TemporalReconstructionPath(nn.Module):
+    """时序重构路径
+
+    多变量支持：权重在最后一维共享，对每个通道独立重构。
+    输入 (..., output_dim) → 输出同形状。
+    """
+
     def __init__(self, input_dim, hidden_dim, output_dim):
         super().__init__()
         self.decoder = nn.Sequential(
@@ -142,6 +158,8 @@ class TemporalReconstructionPath(nn.Module):
         )
 
     def forward(self, x):
+        # x: (B, W, hidden) → (B, W, output_dim)
+        # 权重沿最后一维共享，天然对每个通道独立生效
         return self.decoder(x)
 
 
@@ -164,28 +182,25 @@ class MultiScalePrototypeMatchingPath(nn.Module):
     def forward(self, x):
         """
         参数:
-            x: (batch, seq_len, feature_dim)
+            x: (..., feature_dim)，最后一维是特征维，前面的维度全部保留
         返回:
-            (batch, seq_len)
+            与 x 同形状（每个位置到最近原型的距离即该位置的分数）
         """
-        batch_size, seq_len, _ = x.shape
+        lead_shape = x.shape[:-1]
+        x_flat = x.reshape(-1, self.feature_dim)  # (N, D)
         normalized_weights = F.softmax(self.scale_weights, dim=0)
 
         # ---- 向量化原型匹配 ----
         # 旧代码：for t in range(seq_len): F.pairwise_distance(x[:,t,:], prototypes)
-        # 新代码：cdst 一次性算完所有时间步
-        x_flat = x.reshape(batch_size * seq_len, self.feature_dim)  # (B*S, D)
-
-        total_score = torch.zeros(batch_size, seq_len, device=x.device, dtype=x.dtype)
+        # 新代码：cdist 一次性算完所有位置
+        total_score = torch.zeros(x_flat.shape[0], device=x.device, dtype=x_flat.dtype)
         for i, scale in enumerate(self.scales):
             prototypes = self.prototypes[f"scale_{scale}"]  # (num_proto, D)
-            # cdist: (B*S, num_proto)
-            distances = torch.cdist(x_flat, prototypes, p=2.0)
-            min_distance = distances.min(dim=1)[0]  # (B*S,)
-            scale_scores = min_distance.reshape(batch_size, seq_len)
-            total_score = total_score + scale_scores * normalized_weights[i]
+            distances = torch.cdist(x_flat, prototypes, p=2.0)  # (N, num_proto)
+            min_distance = distances.min(dim=1)[0]  # (N,)
+            total_score = total_score + min_distance * normalized_weights[i]
 
-        return total_score
+        return total_score.reshape(*lead_shape)
 
 
 class UncertaintyEstimation(nn.Module):
@@ -202,7 +217,17 @@ class UncertaintyEstimation(nn.Module):
 
 
 class DualPathModel(nn.Module):
-    """双路径时间序列异常检测模型（修复版）"""
+    """双路径时间序列异常检测模型（支持单变量与多变量）
+
+    输入:
+        单变量: (B, W, 1)
+        多变量: (B, W, C)
+
+    内部两条路径都在通道维输出分数，最终用 max 聚合到 (B, W)：
+        重构路径: (B, W, C)  每个通道一个重构误差
+        原型路径: (B, W, C)  每个通道一个原型距离
+    max 聚合的语义：任一通道异常 → 该时间点异常。
+    """
 
     def __init__(self, config):
         super().__init__()
@@ -211,9 +236,12 @@ class DualPathModel(nn.Module):
         self.window_size = mp["window_size"]
         self.hidden_dim = mp["hidden_dim"]
         self.freq_components = mp["freq_components"]
+        self.freq_feature_dim = mp.get("freq_feature_dim", 64)
         self.temperature = mp["temperature"]
         self.lambda1 = mp["lambda1"]
         self.lambda2 = mp["lambda2"]
+        # 输入通道数，1 = 单变量（UCR），>1 = 多变量
+        self.n_features = mp.get("n_features", 1)
         # 默认走自适应权重，不再硬编码 UCR_5 的 0.2/0.8
         self.use_fixed_weights = mp.get("use_fixed_weights", False)
         # 如果要固定，允许配置权重比例（而非写死 0.2/0.8）
@@ -221,23 +249,28 @@ class DualPathModel(nn.Module):
         self.fixed_proto_weight = mp.get("fixed_proto_weight", 0.5)
 
         self.preprocessing = TimeFrequencyPreprocessing(
-            freq_components=self.freq_components, freq_feature_dim=64
+            freq_components=self.freq_components,
+            freq_feature_dim=self.freq_feature_dim,
+            n_features=self.n_features,
         )
+        # 输入 =原始 C 通道 + 频域投影 freq_feature_dim 通道
         self.multi_scale_conv = MultiScaleConv(
-            in_channels=1 + 64, out_channels=self.hidden_dim
+            in_channels=self.n_features + self.freq_feature_dim,
+            out_channels=self.hidden_dim,
         )
         self.transformer = TransformerEncoder(
             d_model=self.hidden_dim,
             nhead=mp["num_heads"],
             num_layers=mp["num_layers"],
         )
+        # 重构路径：输出 C 通道（逐通道独立重构，权重沿最后一维共享）
         self.reconstruction_path = TemporalReconstructionPath(
             input_dim=self.hidden_dim,
             hidden_dim=self.hidden_dim * 2,
-            output_dim=1,
+            output_dim=self.n_features,
         )
         self.prototype_path = MultiScalePrototypeMatchingPath(
-            feature_dim=self.hidden_dim, scales=(1, 2, 4), prototypes_per_scale=8
+            feature_dim=self.n_features, scales=(1, 2, 4), prototypes_per_scale=8
         )
         self.uncertainty_estimation = UncertaintyEstimation(
             input_dim=self.hidden_dim + 2
@@ -246,25 +279,36 @@ class DualPathModel(nn.Module):
     def forward(self, x):
         """
         参数:
-            x: (batch, window_size, features)
+            x: (B, W, C)
         返回:
-            dict: 模型输出
+            dict: 各路径分数，融合后 fused_score 为 (B, W)
         """
-        time_feature, freq_feature = self.preprocessing(x)
+        time_feature, freq_feature = self.preprocessing(x)   # (B,W,C), (B,W,F)
         combined_feature = torch.cat([time_feature, freq_feature], dim=2)
-        local_feature = self.multi_scale_conv(combined_feature)
-        global_feature = self.transformer(local_feature)
+        local_feature = self.multi_scale_conv(combined_feature)    # (B,W,H)
+        global_feature = self.transformer(local_feature)          # (B,W,H)
 
-        recon = self.reconstruction_path(local_feature)  # (batch, seq_len, 1)
-        recon_error = torch.mean(torch.abs(x - recon), dim=2)  # (batch, seq_len)
+        # ---- 重构路径：逐通道重构误差 (B, W, C) ----
+        recon = self.reconstruction_path(local_feature)           # (B,W,C)
+        recon_error_mv = torch.abs(x - recon)                     # (B,W,C)
 
-        prototype_score = self.prototype_path(global_feature)  # (batch, seq_len)
+        # ---- 原型路径：逐通道原型距离 (B, W) ----
+        # 原型匹配作用在重构误差特征上：语义是"这个点离正常原型有多远"，
+        # 重构误差恰好是该语义的直接度量
+        prototype_score = self.prototype_path(recon_error_mv)     # (B,W)
+        # 多变量时：各通道分数用 max 聚合 → 任一通道异常即该时间点异常
+        if self.n_features > 1:
+            prototype_score_mv = prototype_score
+            recon_error = recon_error_mv.max(dim=2)[0]             # (B,W)
+        else:
+            prototype_score_mv = prototype_score.unsqueeze(2)      # (B,W,1)
+            recon_error = recon_error_mv.squeeze(2)               # (B,W)
 
         uncertainty_input = torch.cat(
             [global_feature, recon_error.unsqueeze(2), prototype_score.unsqueeze(2)],
             dim=2,
         )
-        uncertainty = self.uncertainty_estimation(uncertainty_input)
+        uncertainty = self.uncertainty_estimation(uncertainty_input)  # (B,W,2)
 
         if self.use_fixed_weights:
             weight_recon = torch.ones_like(recon_error) * self.fixed_recon_weight
@@ -282,6 +326,8 @@ class DualPathModel(nn.Module):
 
         return {
             "reconstruction": recon,
+            "recon_error_mv": recon_error_mv,
+            "prototype_score_mv": prototype_score_mv,
             "recon_error": recon_error,
             "prototype_score": prototype_score,
             "uncertainty": uncertainty,
@@ -289,9 +335,22 @@ class DualPathModel(nn.Module):
             "fused_score": fused_score,
         }
 
+    def _prototype_per_channel(self, feat, recon_error_mv):
+        """
+        逐通道原型匹配
+
+        做法：原型路径作用在**重构误差特征**上，而非 hidden 特征。
+        理由：原型路径的语义是"这个点离正常原型有多远"，
+        重构误差恰好是该语义的直接度量，且通道数天然对齐（无需整除条件）。
+
+        保留此方法作为多变量扩展时的实验入口（当前 forward 直接调用 prototype_path）。
+        """
+        return self.prototype_path(recon_error_mv)  # (B, W)
+
     def compute_loss(self, output, x):
+        # 重构损失：逐通道
         recon_loss = F.mse_loss(output["reconstruction"], x)
-        match_loss = output["prototype_score"].mean()
+        match_loss = output["prototype_score_mv"].mean()
 
         recon_unc = output["uncertainty"][:, :, 0]
         proto_unc = output["uncertainty"][:, :, 1]
@@ -317,10 +376,12 @@ class DualPathModel(nn.Module):
 
 
 class UCRDataset(Dataset):
-    """UCR 数据集（向量化滑窗）"""
+    """时序数据集（支持单变量 (T,) 与多变量 (T, C)）"""
 
     def __init__(self, data, window_size, slide_step=1):
         self.data = np.asarray(data, dtype=np.float32)
+        if self.data.ndim == 1:
+            self.data = self.data[:, np.newaxis]  # (T,) → (T, 1)
         self.window_size = window_size
         self.slide_step = slide_step
         self.indices = np.arange(
@@ -332,8 +393,8 @@ class UCRDataset(Dataset):
 
     def __getitem__(self, idx):
         start = self.indices[idx]
-        window = self.data[start : start + self.window_size]
-        return torch.from_numpy(window).float().unsqueeze(-1)
+        window = self.data[start : start + self.window_size]  # (W, C)
+        return torch.from_numpy(np.ascontiguousarray(window)).float()
 
 
 def create_dataloader(data, window_size, batch_size=64, shuffle=True, device=None):

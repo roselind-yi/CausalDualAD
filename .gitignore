@@ -24,6 +24,7 @@ _archive/
 
 # ---- 大文件 / 数据集 ----
 # 真实数据集不入库（体积大），目录与获取方式见 docs/DATASET.md
+data/
 data/**/*.npy
 data/**/*.csv
 data/UCR_synthetic/
@@ -38,7 +39,8 @@ checkpoints/
 *.pth
 
 # ---- 实验结果：入库（毕设需要结果可追溯）----
-# 只忽略中间态
+# 只忽略中间态；模型权重不入库，指标 JSON 与分数数组入库
+results/**/*_model.pth
 results/**/*.tmp
 results/**/cache/
 
