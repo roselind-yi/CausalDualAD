@@ -1,0 +1,34 @@
+[
+  {
+    "model": "DualPathAD",
+    "metrics": {
+      "top_1": 1.0,
+      "top_3": 1.0,
+      "top_5": 1.0,
+      "auroc": 0.05464722222222222,
+      "vus_roc": 0.05464722222222222,
+      "vus_pr": 0.05263423317498594,
+      "f1": 0.0648282535074988,
+      "precision": 0.035886448848419926,
+      "recall": 0.335,
+      "threshold": 0.2866648920557716,
+      "method": "oracle_threshold_search"
+    }
+  },
+  {
+    "model": "SimAD",
+    "metrics": {
+      "top_1": 0.0,
+      "top_3": 0.0,
+      "top_5": 0.0,
+      "auroc": 0.44795,
+      "vus_roc": 0.44795,
+      "vus_pr": 0.09713193523271452,
+      "f1": 0.18,
+      "precision": 0.135,
+      "recall": 0.27,
+      "threshold": 2.2680797576904297,
+      "method": "oracle_threshold_search"
+    }
+  }
+]

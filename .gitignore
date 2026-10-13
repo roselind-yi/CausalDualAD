@@ -1,0 +1,46 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# ---- IDE ----
+.idea/
+.trae/
+.vscode/
+*.iml
+
+# ---- 系统 ----
+.DS_Store
+Thumbs.db
+
+# ---- 日志 ----
+logs/
+
+# ---- 归档代码（保留在本地磁盘，不入版本库）----
+_archive/
+
+# ---- 大文件 / 数据集 ----
+# 真实数据集不入库（体积大），目录与获取方式见 docs/DATASET.md
+data/**/*.npy
+data/**/*.csv
+data/UCR_synthetic/
+data/data_loader.py
+dataset/
+SimAD/
+TSAD.zip
+*.whl
+
+# ---- 模型权重 ----
+checkpoints/
+*.pth
+
+# ---- 实验结果：入库（毕设需要结果可追溯）----
+# 只忽略中间态
+results/**/*.tmp
+results/**/cache/
+
+# ---- 迁移日志 ----
+push_result.txt

@@ -1,0 +1,481 @@
+%!Mode:: "TeX:UTF-8"
+% !TeX program = xelatex
+
+\documentclass{setp-new}
+% Ctex 可以使用pdflatex或者xelatex编译
+%此模板需调用宏包cjoe-new.cls, 请确保此宏包与tex文件在同一文件夹下
+\usepackage{float}
+\usepackage{pifont}
+\usepackage{mathtools}
+\usepackage{hhline}
+\usepackage{algorithmicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[leftline]{algorithm2e}
+\usepackage{amsmath, amssymb} % 用于数学符号
+\usepackage{setspace} % 用于调整行间距
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+\onehalfspacing
+
+\jolname{系统工程理论与实践}{Systems Engineering --- Theory \& Practice}
+
+\newcommand{\sz}{\small}
+
+
+\begin{document}
+
+\Volume{xxxx}{0}{0}{0}  % 年、月、卷、期
+\PageNum{1}              % 起始页码
+\PaperDOI{10.12011/SETPXXXX-XXXX}  % DOI,编辑部给出
+\Category{XXX{\bf 请作者给出}}{A}
+
+
+\TitleMark{作者A, 等: 系统工程理论与实践论文\LaTeX 模板说明}  % 页眉, 如只有一位作者,请去掉``等" 若题目过长, 请去掉副标题
+
+\Title{系统工程理论与实践论文\LaTeX 模板说明}%标题
+
+\Author{作者A{\fontsize{12pt}{\baselineskip}\selectfont $^{1}$}, 作者B{\fontsize{12pt}{\baselineskip}\selectfont $^{2}$}, 作者C{\fontsize{12pt}{\baselineskip}\selectfont $^{1}$}, 作者D{\fontsize{12pt}{\baselineskip}\selectfont $^{2}$}}%姓名为两个字用 \quad 隔开
+{(1.学校名称~ 所在学院, 所在城市~ 邮编; 2. 中国科学院 ~数学与系统科学研究院, 北京  100190)}%作者及单位
+
+\Abstract{本文给向《系统工程理论与实践》投稿或已录用的作者提供一个中文\LaTeX{}模版,详细说明了本刊编排要求,请作者认真阅读,并在相应的位置填入相应的内容既可, 模板版面设置参数不允许修改.}
+
+\Keywords{时间序列；数据挖掘；异常检测；图神经网络；深度学习}%关键词用英文分号隔开
+
+\ETitle{The guide of the \LaTeX{} template for preparing the manuscript of Systems Engineering --- Theory \& Practice} %英文标题
+
+\EAuthor{ZUO Zhe A$^1$, \ ZUO Zhe B$^2$, \ ZUO Zhe C$^1$,  \ ZUO Zhe D$^2$} % 作者姓名的拼音,姓在前,名在后,姓大写.
+{(1. University, City~ Postal Code, Country;\\
+2. Chinese Academy of
+Sciences, Academy of Mathematics and Systems Science, Beijing
+100190, China)}
+
+\EAbstract{ This article provides a Chinese
+\LaTeX{} template for authors who have submitted or accepted to ``Systems Engineering --- Theory \& Practice", detailing the layout requirements of this journal, please read carefully and fill in the corresponding content in the corresponding position. }
+
+\EKeywords {Time Series；Data Mining；Anomaly Detection；Graph Neural Network；Deep Learning}%关键词用英文分号隔开, 首字母小写
+
+
+% -------- \EditorNote 放到 title 的后面
+
+\EditorNote{\textbf{收稿日期:}\ XXXX-XX-XX}  % 脚注,收稿日期 编辑部给出
+
+\EditorNote{\textbf{作者简介:} 姓名(出生年月--), 职称, 学位, 学术称号, 研究方向, E-mail: XXX; 姓名(出生年月--), 职称, 学位, 学术称号, 研究方向, E-mail: XXX.} %所有作者的作者简介
+
+\EditorNote{\textbf{基金项目:}\ 基金名称(项目编号); 国家自然科学基金(71774051)\\
+\textbf{Foundation item:} Fund Name (XXXXXXXX); National Natural Science Foundation of China (71774051)}%中文基金相对应的英文翻译.
+
+\CiteAuthor{作者A, 作者B, 作者C, 等.}{Author A, Author B, Author C, et al.}
+
+
+
+\maketitle
+\section{引言}
+时间序列异常检测（Time Series Anomaly Detection, TSAD）作为数据挖掘与人工智能运维（AIOps）的核心技术，在保障工业物联网、金融风控、智能医疗等关键基础设施的稳定与安全方面扮演着不可或缺的角色[1, 2]。其核心目标是从海量、高维的时序数据中精准识别出偏离正常行为模式的点或片段，这些异常往往是系统故障、网络攻击或业务风险的早期信号[3]。
+近年来，深度学习技术显著推动了TSAD领域的发展。尤其是基于重构[4, 5]和预测[6]的方法，通过深度网络（如卷积神经网络、循环神经网络及其变体）学习正常数据的复杂模式，并利用重构误差或预测偏差作为异常评分，在多个基准数据集上取得了卓越的性能。近期，诸如Anomaly Transformer [7]、TimesNet [8]等研究通过引入注意力机制或多周期建模，进一步提升了模型捕捉复杂时序依赖的能力。然而，尽管这些方法不断逼近性能极限，现有技术在面对真实应用场景中动态、异构的异常时，仍存在三个相互交织的根本性挑战：
+
+\begin{itemize}
+    \item 异常形态的异构性：现实工业环境中时间序列异常呈现出复杂的异构特性，既包含瞬时爆发性的点异常(Point Anomalies)，也涵盖持续性、渐进性的模式异常(Pattern Anomalies)。传统单一检测机制难以同时应对这两种物理本质迥异的异常类型。点异常破坏局部平滑性，而模式异常违背全局演化规律，这种异构性要求检测框架具备多模态感知能力。
+
+    \item 时序上下文的复杂性：工业级多变量时间序列蕴含多尺度时间依赖特性，局部短期波动与全局长期趋势并存，且变量间存在复杂的动态关联。简单模型难以全面捕捉跨越不同时间尺度的依赖关系，而过于复杂的模型又容易陷入过拟合困境并缺乏可解释性。如何在模型复杂度和表达能力之间取得平衡，成为时序异常检测的关键科学问题。。
+    
+    \item 检测策略的静态性：绝大多数现有方法采用固定的检测逻辑（例如，单一阈值或固定权重融合）。它们无法根据输入数据的实时特性（如信噪比、数据完整性、模式清晰度）自适应地调整检测策略[11]。这种“一刀切”的静态模式限制了模型在复杂动态环境中的鲁棒性与实用性。
+\end{itemize}
+
+为应对上述挑战，本文提出了一种基于多尺度原型匹配与不确定性感知融合的双路径时间序列异常检测框架。本框架的核心思想是：通过设计两条原理互补、各司其职的检测路径，并引入一个智能的专家决策设计，实现全面、自适应且鲁棒的异常检测。具体而言，时序重构路径专注于捕捉细节信息，对违背局部一致性的点异常高度敏感；而新颖的多尺度时序原型匹配路径则通过度量全局特征与正常模式原型库的距离，对系统性的状态漂移进行有效探测。最后，不确定性感知的自适应融合模块作为框架的决策中心，能够根据实时数据质量动态评估两条路径的可靠性，并智能地融合其决策。
+
+本文的主要贡献可概括为以下四个方面：
+
+1）本文提出了双路径互补异常检测理论框架，通过设计局部到全局，时频域结合的检测路径，系统性地解决了异常异构性难题。时序重构路径专注于局部细节保真度，对违背短期一致性的点异常高度敏感；多尺度时序原型匹配路径通过度量学习机制，有效捕捉系统性的状态漂移和模式异常。这种双路径设计打破了传统单一机制的技术局限，为复杂异常检测提供了新的理论范式。
+
+2）本文提出了不确定性感知的自适应融合方法，突破了固定权重融合的策略刚性。通过构建轻量级不确定性估计网络，实时评估各检测路径的可靠性，并基于不确定性度量动态调整融合权重。该方法将异常检测模型从静态的"分类器"升级为智能的"决策系统"，显著提升了在非平稳环境下的实用性和鲁棒性。理论分析和实验验证表明，该机制能够根据数据质量自主调整检测策略，实现软硬件协同优化。
+
+3）本文构建了层次化时序特征学习架构，通过多尺度卷积与轻量级Transformer的协同设计，实现了从局部细节到全局上下文的渐进式特征提取。该架构既保留了卷积网络在局部模式捕捉方面的效率优势，又继承了Transformer在长期依赖建模方面的强大能力。特别地，本文设计了基于马氏距离的多尺度原型匹配机制，通过可学习的原型向量库建立正常模式参考系，增强了模型的可解释性和稳定性。
+
+
+\section{相关工作}
+
+\subsection{文章标题}
+
+\section{提出的方法}
+
+\subsection{框架概述}
+
+本文提出了一种基于多尺度原型匹配与不确定性感知融合的双路径时间序列异常检测框架，其输入为多变量时间序列\(X \in R^{T \times C}\)(T为时间步长，C为变量维度），输出为每个时间点的异常评分\(S \in R^{T}\)。框架主要由四个核心模块构成：时频双域预处理模块：对原始时序进行标准化，并并行提取频域特征以捕捉周期性模式；分层时序特征提取器：利用多尺度卷积与轻量级Transformer，协同捕获局部细节与全局依赖；双路径异常检测机制：包含一条时序重构路径（对点异常敏感）和一条全新的多尺度时序原型匹配路径（对模式异常敏感）；根据实时数据特性，通过不确定性估计方法动态融合双路径评分，生成最终异常分数。
+
+\subsection{时频双域预处理模块}
+
+为充分利用时序数据中的信息，本模块同时从时间域和频率域对原始信号进行预处理，（公式1不参与训练过出，只是数据的预处理）。首先我们对数据采用Z-score标准化，消除量纲影响：
+\begin{equation}
+\mu_c = \frac{1}{T_{\text{train}}} \sum_{t=1}^{T_{\text{train}}} X_{\text{train}}[t,c]\\,
+\sigma_c = \sqrt{\frac{1}{T_{\text{train}}} \sum_{t=1}^{T_{\text{train}}} (X_{\text{train}}[t,c] - \mu_c)^2}
+\end{equation}
+
+其中, $T_{\text{train}}$为训练集时间步长，这些参数 $\mu_c$和 $\sigma_c$将作为模型的一部分被固定下来，用于后续所有的标准化操作。
+
+\subsubsection{时间域处理}
+对于任何一段需要进行预处理的时间序列数据$X \in \mathbb{R}^{T \times C}$（无论是在训练时对训练集的另一部分进行处理，还是在测试时对测试集进行处理），我们都使用上述训练阶段得到的 $\mu_c$和 $\sigma_c$对任意输入序列进行如下标准化计算：
+\begin{equation}
+X_{\text{norm}}[t,c] = \frac{X[t,c] - \mu_c}{\sigma_c}
+\end{equation}
+
+此操作的输出是归一化后的数据 $X_{\text{norm}} \in \mathbb{R}^{T \times C}$，确保各变量处于相同量纲，便于后续神经网络处理。
+
+\subsubsection{频域处理}
+通过快速傅里叶变换捕捉序列的周期性模式。
+
+首先，我们先对 $X_{\text{norm}} \in \mathbb{R}^{T \times C}$（$T$为时间步，$C$为特征数）的每个特征维度做一维离散傅里叶变换（FFT），得到频域表示，其中，    其中 $f$ 为频率索引，$i$ 为虚数单位：
+    \begin{equation}
+    \mathcal{F}(X_{\text{norm}})[f, c] = \frac{1}{T} \sum_{t=0}^{T-1} X_{\text{norm}}[t,c] e^{-2\pi i f t / T}, \quad f=0,1,\dots,T-1
+    \end{equation}
+
+   接着，计算幅度谱并截取主要分量。傅里叶变换的结果是复数，我们取其幅度谱以表示不同频率成分的强度，同时我们考虑到信号能量通常集中在低频部分，故截取前 k个频率分量（对应于最低的 k个频率），构成幅度谱矩阵 $A_k$：
+    \begin{equation}
+    A[f,c] = \left| \mathcal{F}(X_{norm})[f,c] \right|, \quad A_k = A[0:k, :] \in \mathbb{R}^{k \times C}
+    \end{equation}
+
+   最后，投影得到频域特征。为了将频域信息转化为可用于神经网络的特征，我们使用一个轻量级多层感知机 $\text{MLP}_{\text{freq}}$对 $A_k$进行投影。此处，为了与时间域数据在时间维度上对齐，我们将MLP的输出特征在时间步维度上进行复制，得到最终的频域特征表示，（其中公式五中包含可训练参数，投影层的全部参数通过反向传播自动优化）：
+    \begin{equation}
+   F_{\text{freq}} = \text{Expand}_T (\text{MLP}_{\text{freq}}(A_k)) \in \mathbb{R}^{T \times d_f}
+    \end{equation}
+
+其中，$\text{Expand}_{T}(\cdot)$表示将特征向量扩展（复制k次）至 T个时间步的操作，$d_f$为频域特征的维度。$F_{\text{freq}}$将作为后续特征提取模块的输入之一。（此外，超参数分别是保留的频域分量数量k和频域特征维度\(d_f\)）。
+
+算法 1 展示了我们这一节的工作，突出了我们方法在设计和实现上的简洁性。
+\begin{algorithm}[H]
+\caption{时频双域预处理模块}
+\label{alg:time_freq_preprocessing}
+\begin{algorithmic}[1]
+\Require 原始时间序列 $X \in \mathbb{R}^{T \times C}$; 运行模式 $\text{mode} \in \{\text{train}, \text{test}\}$; 训练集统计量 $\mu_c, \sigma_c$（若$\text{mode} = \text{test}$）
+\Ensure 归一化时序数据 $X_{\text{norm}} \in \mathbb{R}^{T \times C}$; 频域特征 $F_{\text{freq}} \in \mathbb{R}^{T \times d_f}$; 更新后的统计量 $\mu_c, \sigma_c$（若$\text{mode} = \text{train}$）
+
+\If{$\text{mode} == \text{train}$}
+    \State \textbf{时间域处理（计算统计量）:}
+    \State $\mu_c \gets \frac{1}{T} \sum_{t=1}^{T} X_{\text{raw}}[t, c], \quad \forall c \in [1, C]$ \Comment{公式(1)}
+    \State $\sigma_c \gets \sqrt{\frac{1}{T} \sum_{t=1}^{T} (X_{\text{raw}}[t, c] - \mu_c)^2}, \quad \forall c \in [1, C]$ \Comment{公式(1)}
+\EndIf
+\State \textbf{时间域处理（标准化）:}
+\State $X_{\text{norm}}[t, c] \gets (X_{\text{raw}}[t, c] - \mu_c) / \sigma_c, \quad \forall t \in [1, T], c \in [1, C]$ \Comment{公式(2)}
+
+\State \textbf{频域处理:}
+\State $\mathcal{F} \gets \text{FFT}(X_{\text{norm}})$ \Comment{沿时间维进行快速傅里叶变换，公式(3)}
+\State $A \gets |\mathcal{F}|$ \Comment{计算幅度谱，公式(4)}
+\State $A_k \gets A[0:k, :]$ \Comment{截取前$k$个主要频率分量，$A_k \in \mathbb{R}^{k \times C}$，公式(5)}
+\State $F'_{\text{freq}} \gets \text{MLP}_{\text{freq}}(A_k)$ \Comment{投影，$F'_{\text{freq}} \in \mathbb{R}^{C \times d_f}$}
+\State $F_{\text{freq}} \gets \text{Expand}_T(F'_{\text{freq}})$ \Comment{沿时间维扩展至长度$T$，得到最终输出，公式(6)}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{分层时序特征提取器}
+
+本模块的设计动机源于真实异常的多尺度特性：点异常需关注局部细节，模式异常需洞察全局上下文。因此，我们设计了一个分层结构来协同提取不同粒度的特征。其输入为预处理后的时间域数据 $X_{\text{norm}} \in \mathbb{R}^{T \times C}$ 和频率域特征 $F_{\text{freq}} \in \mathbb{R}^{T \times d_f}$。输出为局部特征 $H_{\text{local}}$ 与全局特征 $H_{\text{global}}$。
+
+\subsubsection{局部特征提取}
+为捕捉不同范围的局部上下文信息，我们设计了一个并行多尺度一维卷积网络。该网络包含三个独立的卷积分支，其卷积核大小分别为 $k \in \{3, 5, 7\}$。对于每个分支，我们使用一层一维卷积操作，后接ReLU激活函数，直接处理归一化后的输入数据 $X_{\text{norm}}$：
+\begin{equation}
+H_k = \operatorname{ReLU}\left(\operatorname{Conv}1D_{k}\left(X_{\text{norm}}\right)\right)
+\end{equation}
+
+其中，$\operatorname{Conv1D}_{k}$表示卷积核大小为 $k$的一维卷积操作。为确保输出序列的时间步长 $T$与输入相同，我们对输入进行了适当的填充。$H_k \in \mathbb{R}^{T \times d_k}$即为第 $k$个尺度分支提取到的特征表示，$d_k$是该分支卷积的输出通道数。
+
+随后，我们将三个不同尺度分支的输出特征在通道维度进行拼接，形成综合的局部特征表示，该特征将作为后续重构路径的输入：
+\begin{equation}
+H_{\text{local}} = [H_3; H_5; H_7] \in \mathbb{R}^{T \times d_l}
+\end{equation}
+其中，$[;]$ 表示拼接操作，$d_l = d_3 + d_5 + d_7$ 为局部特征总维度。
+
+\subsubsection{全局特征提取}
+为建模时间序列中的长期依赖关系，我们采用 Transformer 编码器。其设计动机是：局部特征已包含丰富的细节信息，但需要一种强大的机制来学习全局上下文。Transformer 通过自注意力机制，能够有效捕捉序列中任意两个时间点之间的动态关联。
+
+首先，将局部特征提取器输出的综合局部特征 $H_{\text{local}}$与预处理模块得到的频域特征 $F_{\text{freq}}$进行拼接，融合时间域的细节与频率域的周期性信息，共同作为 Transformer 编码器的输入，其中，$[;]$表示在特征维度（通道维）进行拼接操作，$d_l$为局部特征总维度，$d_f$为频域特征维度。
+\begin{equation}
+H_{\text{in}} = [H_{\text{local}}; F_{\text{freq}}] \in \mathbb{R}^{T \times (d_l + d_f)}
+\end{equation}
+
+Transformer 编码器由 $L_t$个结构相同的编码层堆叠而成，为了初步进行实验，此处我们初次设定注意力头数为4，编码层数为3，每个子层前进行pre-layer，隐藏维度是模型维度的2倍。每一层的计算过程定义如下（注意，下述公式可能存在不完整的情况）：
+    
+\begin{enumerate}
+    \item \textbf{多头自注意力机制}：将输入序列 $H_{\text{in}} \in \mathbb{R}^{T \times d_{\text{model}}}$通过线性变换并行地映射为查询、键、值矩阵分别为$Q = H_{in}W^Q$,$\quad K = H_{in}W^K$,$\quad V = H_{in}W^V$，其中，$W^Q, W^K, W^V \in \mathbb{R}^{d_{\text{model}} \times d_k}$为可学习的参数矩阵。每个注意力头的计算为：
+    \begin{equation}
+    \text{Attention}\left(Q, K, V\right) = \operatorname{Softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V
+    \end{equation}
+    
+    将所有头的输出拼接并线性变换,再通过一个线性投影得到多头自注意力的最终输出：$\text{MHSA}(H_{in}) = [\text{head}_1; \dots; \text{head}_H] W_O$，其中，$H$为注意力头的总数，$W^O \in \mathbb{R}^{(H \cdot d_k) \times d_{\text{model}}}$。
+    
+    \item \textbf{残差连接与层归一化}：
+    \begin{equation}
+    Z = \text{LayerNorm}(H_{in}+ \text{MHSA}(H_{in}))
+   \end{equation}
+   
+    \item \textbf{前馈神经网络}：：FFN 是一个两层的全连接网络，通常包含一个非线性激活函数（如 ReLU）：
+    \begin{equation}
+    \text{FFN}(Z) = \text{ReLU}(Z W_1 + b_1) W_2 + b_2
+    \end{equation}
+    其中，$W_1 \in \mathbb{R}^{d_{\text{model}} \times d_{ff}}$, $W_2 \in \mathbb{R}^{d_{ff} \times d_{\text{model}}}$，$d_{ff}$通常是 $d_{\text{model}}$的 4 倍。
+    
+    \item \textbf{再次残差连接与层归一化}:
+    \begin{equation}
+    H_{out} = \text{LayerNorm}(Z + \text{FFN}(Z))
+    \end{equation}
+\end{enumerate}
+
+以上四步构成了一个完整的 Transformer 编码层。将 $H_{\text{in}}$输入第一个编码层，其输出作为下一层的输入，依次经过 $L_t$层的处理。
+最终，最后一层的输出 $H^{(L_t)}$ 即为全局特征，其中，$d_g$ 为全局特征的维度，其数值等于Transformer编码器中定义的隐藏层维度 $d_{model}$：
+\begin{equation}
+H_{\text{global}} = H^{(L_t)} \in \mathbb{R}^{T \times d_g}
+\end{equation}
+
+$H_{\text{global}}$蕴含了每个时间点丰富的局部信息及其与序列中所有其他时间点的全局上下文关联，将作为后续多尺度时序原型匹配路径的输入。
+
+算法 2 详细展示了分层时序特征提取器的执行流程，该流程清晰地分离了局部特征提取与全局特征学习两个阶段。
+\begin{algorithm}[H]
+\caption{分层时序特征提取器}
+\label{alg:hierarchical_feature_extractor}
+\begin{algorithmic}[1]
+\Require 归一化时序数据 $X_{\text{norm}} \in \mathbb{R}^{T \times C}$; 频域特征 $F_{\text{freq}} \in \mathbb{R}^{T \times d_f}$
+\Ensure 局部特征 $H_{\text{local}} \in \mathbb{R}^{T \times d_l}$; 全局特征 $H_{\text{global}} \in \mathbb{R}^{T \times d_g}$
+
+\State \textbf{局部特征提取（多尺度卷积）:}
+\For{ $k$ in $\{3, 5, 7\}$} \Comment{并行处理三个尺度的卷积}
+    \State $H_k \gets \text{ReLU}(\text{Conv1D}_k(X_{\text{norm}}))$ \Comment{核大小为$k$的一维卷积，输出通道数$d_k$，公式(7)}
+\EndFor
+\State $H_{\text{local}} \gets [H_3; H_5; H_7]$ \Comment{在特征维度拼接，$d_l = d_3 + d_5 + d_7$，公式(8)}
+
+\State \textbf{全局特征提取（Transformer）:}
+\State $H_{\text{input}} \gets [H_{\text{local}}; F_{\text{freq}}]$ \Comment{融合局部与频域特征，公式(9)}
+\State $H_{\text{global}} \gets \text{TransformerEncoder}(H_{\text{input}})$ \Comment{详细计算见公式(10)-(14)}
+
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{双路径异常检测机制}
+
+点异常（瞬时尖峰）通常违背局部平滑性，而模式异常（系统漂移）则表现为整体分布偏离。单一机制难以兼顾。因此，我们设计两条优势互补的路径：
+
+1）时序重构路径专注于局部细节保真度。通过重建输入序列，对偏离正常短期模式的点异常高度敏感。
+
+2）多尺度时序原型匹配路径专注于全局分布一致性。通过衡量当前序列与多种正常模式原型的匹配程度，对系统性状态漂移敏感。
+
+\subsubsection{时序重构路径}
+该路径通过编码-解码结构学习正常数据的重建模式，对违背局部一致性的点异常高度敏感。
+
+使用一个轻量级解码器从局部特征\(H_{local}\)重构输入，尽可能地还原回原始的、标准化后的输入序列\(\hat{X}\)。在此，我们使用一个由线性层构成的轻量级MLP作为Decoder，其可以保持点对点映射的精确性，具体来说，在第一层，即特征映射层，我们将局部特征维度\(d_l\)映射到一个隐藏层维度\(d_{dec}\)，接着在第二层，即输出层，将隐藏表示映射回原始的变量维度C，为了使输出范围与标准化后的输入\(X_{raw}\)匹配，我们使用双曲正切函数（Tanh）作为激活函数，将输出值约束在[-1,1]区间附近，Decoder对每个时间步 $t$的特征向量进行独立处理。
+
+具体地，对于一个两层MLP Decoder，其计算如下，（这里我们使用linear避免输出范围限制）：
+\begin{equation}
+\hat{X}[t]=\operatorname{Linear}\left(\operatorname{ReLU}\left(H_{\text{local}}[t] W_1+b_1\right) W_2+b_2\right)
+\end{equation}
+
+其中，$W_1 \in \mathbb{R}^{d_l \times d_{dec}}$, $b_1 \in \mathbb{R}^{d_{dec}}$, $W_2 \in \mathbb{R}^{d_{dec} \times C}$, $b_2 \in \mathbb{R}^{C}$为可学习参数。通过对所有 $T$个时间步进行计算，我们得到最终的重构序列 $\hat{X} \in \mathbb{R}^{T\times C}$。
+
+接着，计算每个时间点的平均绝对重建误差作为该路径的评分，当该评分越高，表明该时间点偏离正常局部模式的可能性越大：
+\begin{equation}
+S_{recon}[t] = \frac{1}{C} \sum_{c=1}^{C} |X[t,c] - \hat{X}[t,c]|
+\end{equation}
+
+\subsubsection{多尺度时序原型匹配路径}
+旨在通过学习一组正常模式的原型，来检测分布层面的异常。我们同时引入在线聚类算法动态更新原型库，每完成一个epoch后，使用k-means算法的在线版本对正常样本的全局特征进行聚类更新。
+
+我们定义了一个可学习的多尺度原型库原型$\mathcal{P} = \{P_k \in \mathbb{R}^{M_k \times d_g}\}_{k=1}^K$。其中，$K$ 是尺度数量（如 $K = 3$ 代表短、中、长期），$M_k$ 是第 $k$ 个尺度下的原型数量，$d_g$ 是全局特征 $H_{\text{global}}$ 的维度。每个原型向量 $p_k^m$ 代表一种在特定时间尺度上的典型正常模式。
+\begin{equation}
+p_k^m \leftarrow \frac{\sum_{t \in C_m} h_t}{|C_m|}, \quad C_m = \left\{ t : \left\| h_t - p_k^m \right\|_2 = \min_j \left\| h_t - p_k^j \right\|_2 \right\}
+\end{equation}
+
+
+多尺度匹配评分：对于每个时间步 $t$ 的全局特征 $h_t = H_{\text{global}}[t, :]$，我们计算其与各尺度原型库中最近原型的欧氏距离，得到该尺度的匹配分数：
+\begin{equation}
+S_{\text{match}}^k[t] = \min_{m=1}^{M_k} \left\| h_t - p_k^m \right\|_2
+\end{equation}
+
+然后将不同尺度评分加权融合，得到最终匹配路径评分：
+\begin{equation}
+S_{\text{match}}[t] = \sum_{k=1}^{K} \alpha_k S_{\text{match}}^{k}[t]
+\end{equation}
+
+其中, $\alpha_k$ 为可学习或预设的尺度权重, 满足 $\sum_{k=1}^{K} \alpha_k = 1$。评分 $S_{\text{match}}[t]$ 越高, 表明该时间点的全局模式与所有正常模式原型差异越大。
+
+算法3具体展示了我们的设计理念：
+\begin{algorithm}[H]
+\caption{双路径异常检测机制}
+\label{alg:dual_path_detection}
+\begin{algorithmic}[1]
+\Require 局部特征 $H_{\text{local}} \in \mathbb{R}^{T \times d_l}$; 全局特征 $H_{\text{global}} \in \mathbb{R}^{T \times d_g}$; 真实数据 $X_{\text{norm}} \in \mathbb{R}^{T \times C}$; 多尺度原型库 $\mathcal{P} = \{P_k\}_{k=1}^K$; 尺度权重 $\{\alpha_k\}_{k=1}^K$
+\Ensure 重构评分 $S_{\text{recon}} \in \mathbb{R}^{T}$; 原型匹配评分 $S_{\text{match}} \in \mathbb{R}^{T}$
+
+\State \textbf{路径一：时序重构}
+\State $\hat{X} \gets \text{MLP}_{\text{decoder}}(H_{\text{local}})$ \Comment{使用两层MLP解码器重构序列，公式(15)}
+\State $S_{\text{recon}}[t] \gets \frac{1}{C}\sum_{c=1}^C |X_{\text{norm}}[t, c] - \hat{X}[t, c]|, \quad \forall t \in [1, T]$ \Comment{计算MAE作为评分，公式(16)}
+
+\State \textbf{路径二：多尺度原型匹配}
+\For{ $t = 1$ \textbf{to} $T$ }
+    \State $h_t \gets H_{\text{global}}[t, :]$ \Comment{获取第$t$时间步的全局特征}
+    \For{ $k = 1$ \textbf{to} $K$ } \Comment{遍历每个尺度}
+        \State $S^k_{\text{match}}[t] \gets \min_{m=1}^{M_k} ||h_t - p_k^m||_2$ \Comment{计算与最近原型的欧氏距离，公式(17)}
+    \EndFor
+    \State $S_{\text{match}}[t] \gets \sum_{k=1}^K \alpha_k S^k_{\text{match}}[t]$ \Comment{多尺度评分加权融合，公式(18)}
+\EndFor
+\State \Return $S_{\text{recon}}, S_{\text{match}}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{不确定性感知自适应融合模块}
+两条路径在不同场景下的可靠性不同。例如，在数据平稳、噪声小时，重构路径更精确；在数据存在复杂模式漂移时，匹配路径更可靠。固定权重的融合策略无法适应这种动态变化。因此，我们引入不确定性感知，让模型成为一个能自主判断该相信谁的“智能决策系统”。
+
+\subsubsection{路径不确定性估计}
+不确定性可源于评分在短时间窗内的波动（方差大则不确定性高），或当前特征与训练集正常特征分布的差异（差异大则不确定性高）。我们设计一个轻量级的不确定性估计网络 $g_\phi$，训练目标鼓励模型在它容易做出正确判断的时刻给出低不确定性，在难以判断的时刻给出高不确定性，这是一种自监督的学习方式。
+
+
+不确定性估计网络 $g_\phi$ 是一个轻量级的多层感知机，其参数为 $\phi$。该网络以当前时间步 $t$ 的双路径异常评分及其全局上下文特征为输入，输出两条路径在该时间步的不确定性估计值。其前向计算过程如下：
+
+
+\textbf{1. 输入层：}首先，将输入特征进行拼接。网络的输入向量 $\mathbf{in}_t$ 由三部分构成：重构路径评分 $S_{\text{recon}}[t]$、匹配路径评分 $S_{\text{match}}[t]$，以及全局特征 $H_{\text{global}}[t] \in \mathbb{R}^{d_g}$。
+\begin{equation}
+\mathbf{in}_t = \left[ S_{\text{recon}}[t], S_{\text{match}}[t], H_{\text{global}}[t] \right] \in \mathbb{R}^{(2+d_g)} \tag{18a}
+\end{equation}
+
+
+\textbf{2. 隐藏层：}将输入向量投影到一个低维隐藏空间，并通过 ReLU 激活函数引入非线性。
+\begin{equation}
+\mathbf{h}_t = \text{ReLU}\left( \mathbf{in}_t \cdot W_{\phi_1} + b_{\phi_1} \right) \in \mathbb{R}^{d_h} \tag{18b}
+\end{equation}
+
+
+其中，$W_{\phi_1} \in \mathbb{R}^{(2+d_g) \times d_h}$，$b_{\phi_1} \in \mathbb{R}^{d_h}$ 是隐藏层的权重和偏置参数，$d_h$ 是隐藏层维度，是一个较小的超参数（如 8 或 16），以确保网络轻量化。
+
+
+\textbf{3. 输出层：}最后，将隐藏表示映射为两个标量输出，并应用 Softplus 激活函数以确保不确定性估计值为正。
+\begin{equation}
+\left[ u_{\text{recon}}[t], u_{\text{match}}[t] \right] = \text{Softplus}\left( \mathbf{h}_t \cdot W_{\phi_2} + b_{\phi_2} \right) \in \mathbb{R}^2 \tag{18c}
+\end{equation}
+
+
+其中，$W_{\phi_2} \in \mathbb{R}^{d_h \times 2}$，$b_{\phi_2} \in \mathbb{R}^2$ 是输出层的参数。使用 $\text{Softplus}(x) = \ln(1 + e^x)$ 作为输出激活函数，可以平滑地保证不确定性 $u \geq 0$。
+
+
+\begin{equation}
+\left[ u_{\text{recon}}[t], u_{\text{match}}[t] \right] = g_\phi \left( S_{\text{recon}}[t], S_{\text{match}}[t], H_{\text{global}}[t] \right) \tag{18d}
+\end{equation}
+
+
+该网络通过第 3.6 节定义的联合损失函数 $\mathcal{L}_{\text{total}}$ 进行端到端的训练，无需额外的不确定性标签。
+
+算法4具体展示了我们的设计理念：
+\begin{algorithm}[H]
+\caption{不确定性感知自适应融合模块}
+\label{alg:uncertainty_fusion}
+\begin{algorithmic}[1]
+\Require 重构评分 $S_{\text{recon}} \in \mathbb{R}^{T}$; 原型匹配评分 $S_{\text{match}} \in \mathbb{R}^{T}$; 全局特征 $H_{\text{global}} \in \mathbb{R}^{T \times d_g}$
+\Ensure 最终异常评分 $S_{\text{final}} \in \mathbb{R}^{T}$; 路径权重 $W_{\text{recon}}, W_{\text{match}} \in \mathbb{R}^{T}$
+
+\For{ $t = 1$ \textbf{to} $T$ }
+    \State \textbf{不确定性估计:}
+    \State $\mathbf{in}_t \gets [S_{\text{recon}}[t], S_{\text{match}}[t], H_{\text{global}}[t]]$ \Comment{拼接输入特征，公式(19a)}
+    \State $\mathbf{h}_t \gets \text{ReLU}(\mathbf{in}_t \cdot W_{\phi_1} + b_{\phi_1})$ \Comment{通过MLP隐藏层，公式(19b)}
+    \State $[u_{\text{recon}}[t], u_{\text{match}}[t]] \gets \text{Softplus}(\mathbf{h}_t \cdot W_{\phi_2} + b_{\phi_2})$ \Comment{输出不确定性，公式(19c)}
+
+    \State \textbf{自适应权重计算:}
+    \State $w_{\text{recon}}[t] \gets \frac{\exp(-u_{\text{recon}}[t])}{\exp(-u_{\text{recon}}[t]) + \exp(-u_{\text{match}}[t])}$ \Comment{基于不确定性的Softmax，公式(20)}
+    \State $w_{\text{match}}[t] \gets 1 - w_{\text{recon}}[t]$ \Comment{公式(21)}
+
+    \State \textbf{最终评分融合:}
+    \State $S_{\text{final}}[t] \gets w_{\text{recon}}[t] \cdot S_{\text{recon}}[t] + w_{\text{match}}[t] \cdot S_{\text{match}}[t]$ \Comment{公式(22)}
+\EndFor
+\State \Return $S_{\text{final}}, w_{\text{recon}}, w_{\text{match}}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{自适应权重计算与融合}
+基于估计得到的不确定性，我们为每条路径计算一个随时间动态变化的融合权重。核心原则是：不确定性越高的路径，其决策权重越低。我们采用基于Softmax函数的权重计算方式，其中，分母exp(u[t])是不确定性的指数形式，其中$\tau$是温度参数，用于控制权重分布的平滑程度：
+\begin{equation}
+w_{\text{recon}}[t] = \frac{\exp(-u_{\text{recon}}[t]/\tau)}{\exp(-u_{\text{recon}}[t]/\tau) + \exp(-u_{\text{match}}[t]/\tau)}
+\tag{19}
+\end{equation}
+\begin{equation}
+w_{\text{match}}[t] = 1 - w_{\text{recon}}[t]\tag{20}
+\end{equation}
+
+该融合机制使得模型能够根据输入序列的实时特性，自主地在依赖“局部重建精度”和“全局分布一致性”之间进行软切换，极大提升了在复杂非平稳环境下的鲁棒性。
+
+算法5具体展示了我们的设计理念：
+\begin{algorithm}[H]
+\caption{不确定性感知自适应融合模块}
+\label{alg:joint_optimization}
+\begin{algorithmic}[1]
+\Require 
+
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{联合优化目标}
+模型的训练目标是最小化以下联合损失函数：
+\begin{equation}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{recon}} + \lambda_1 \mathcal{L}_{\text{match}} + \lambda_2 \mathcal{L}_{\text{uncertainty}}\tag{21}
+\end{equation}
+
+- $\mathcal{L}_{\text{recon}} = \frac{1}{T \cdot C} \sum_{t,c} \left( X[t,c] - \hat{X}[t,c] \right)^2$ 是重构路径的均方误差损失。
+
+- $\mathcal{L}_{\text{match}} = \frac{1}{T} \sum_{t} S_{\text{match}}[t]$ 是匹配路径的损失，鼓励正常样本与原型距离小。
+
+- $\mathcal{L}_{\text{uncertainty}}=\frac{1}{T} \sum_{t=1}^{T} \left( \frac{|S_{\text{recon}}[t] - S_{\text{match}}[t]|}{\exp(u_{\text{recon}}[t])} + \frac{|S_{\text{recon}}[t] - S_{\text{match}}[t]|}{\exp(u_{\text{match}}[t])} + u_{\text{recon}}[t] + u_{\text{match}}[t] \right)$ 是针对不确定性估计网络的损失，前两项是该损失函数的主导项，分子衡量了两条路径在时间点t的评分差异，分母exp(u[t])是不确定性的指数形式，确保其值为正且放大了不确定性带来的影响；后两项是正则化项，为了避免一致性代价项过高而简单地将所有时间点的不确定性u[t]都估计成一个非常大的值。该损失函数鼓励模型在容易判别的样本上给出低不确定性，在难样本上给出高不确定性。
+
+- $\lambda_1, \lambda_2$ 是超参数，用于平衡不同损失项。
+
+最终，在测试阶段，我们将训练好的参数输入到我们的模型中，得到了每个时间点的融合异常评分$S_{final}$[t]，它是两条路径评分的加权和：
+
+\begin{equation}
+S_{\text{final}}[t] = w_{\text{recon}}[t] \cdot S_{\text{recon}}[t] + w_{\text{match}}[t] \cdot S_{\text{match}}[t]\tag{22}
+\end{equation}
+
+算法 6 展示了框架主流程，突出了我们方法在设计和实现上的简洁性。
+\begin{algorithm}[H]
+\caption{我们的框架主流程}
+\label{alg:mdad_main}
+\begin{algorithmic}[1]
+\Require 
+
+\Ensure 
+\end{algorithmic}
+\end{algorithm}
+
+\section{实验}
+为严谨评估我们的框架，我们设计了全面、公平的实验方案，旨在回答以下研究问题（RQ）：
+
+RQ1：我们的框架在完整数据上的综合性能是否优于现有主流及SOTA方法？
+
+RQ2：框架中的各个核心组件（如多尺度匹配、不确定性融合）对最终性能的贡献度如何？
+
+RQ3：我们的框架在面对数据缺失、噪声干扰等复杂情况时是否具备良好的鲁棒性？
+
+RQ4：我们的的框架决策过程是否具备可解释性？其内部机制如何运作？
+
+\subsection{数据集与基线方法}
+\textbf{数据集：}用5个公开的、来自不同领域的权威基准数据集，涵盖服务器监控（SMD）、水资源处理（SWaT, WADI）、航天器（MSL）和网络服务（Yahoo S5），确保评估的全面性。
+
+\textbf{基线方法：}与三类方法对比：(1) 传统方法（如LOF, iForest）；(2) 重构/预测基深度模型（如OmniAnomaly, MTAD-GAT, TimesNet）；(3) 最新SOTA模型（如Anomaly Transformer, SimAD）。确保对比的公平性，所有方法使用相同的数据预处理和评估流程。
+
+\subsection{评估指标}
+采用多维度指标：
+
+\textbf{点级别检测：}F1-Score, Precision, Recall（需设定阈值）。
+
+\textbf{排序能力：}Area Under ROC Curve (AUROC), Area Under PR Curve (AUPRC)。
+
+\textbf{段级别检测：}调整F1-Score（Segment-adjusted F1），更符合实际应用场景。
+
+
+\subsection{消融实验设计}
+为验证每个创新点的贡献，我们设置以下消融版本：
+
+框架(完整版)
+框架 w/o Match：移除原型匹配路径，仅保留重构路径
+框架 w/o Uncertain：静态平均融合替代不确定性感知融合
+框架 w/o Multi-scale：单尺度原型匹配（K=1）
+框架 w/o Freq：移除频域特征输入
+框架 w/o Lightweight：使用标准Transformer（8头、6层）
+
+\subsection{鲁棒性分析与案例研究}
+\textbf{鲁棒性测试：}在测试数据上主动注入不同比例的随机缺失（Missing Completely at Random, MCAR）和高斯噪声，观察模型性能衰减情况。
+
+\textbf{案例研究：}选取典型异常片段，可视化展示两条路径的评分、不确定性权重以及最终融合结果，深入剖析模型内部的决策过程，增强可解释性。
+
+\subsection{讨论}
