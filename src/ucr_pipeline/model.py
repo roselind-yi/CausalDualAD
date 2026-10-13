@@ -164,43 +164,55 @@ class TemporalReconstructionPath(nn.Module):
 
 
 class MultiScalePrototypeMatchingPath(nn.Module):
-    """多尺度原型匹配路径（向量化版）"""
+    """多尺度原型匹配路径（逐通道，支持任意通道数）
 
-    def __init__(self, feature_dim, scales=(1, 2, 4), prototypes_per_scale=8):
+    语义：每个通道有自己的一组"正常原型值"，通道 c 在时刻 t 的分数
+    = 该通道当前值到该通道最近原型的距离。
+
+    因此原型参数形状为 (n_features, prototypes_per_scale)，
+    输入 (..., n_features) → 输出同形状，每个通道独立打分。
+    """
+
+    def __init__(self, n_features, scales=(1, 2, 4), prototypes_per_scale=8):
         super().__init__()
-        self.feature_dim = feature_dim
+        self.n_features = n_features
         self.scales = scales
         self.prototypes_per_scale = prototypes_per_scale
 
+        # 每个通道一套原型，初始在 [0,1] 区间随机（重构误差经Tanh 后大致落在此范围）
         self.prototypes = nn.ParameterDict()
         for scale in scales:
             self.prototypes[f"scale_{scale}"] = nn.Parameter(
-                torch.randn(prototypes_per_scale, feature_dim)
+                torch.rand(n_features, prototypes_per_scale)
             )
         self.scale_weights = nn.Parameter(torch.ones(len(scales)))
 
     def forward(self, x):
         """
         参数:
-            x: (..., feature_dim)，最后一维是特征维，前面的维度全部保留
+            x: (..., n_features)，最后一维是通道维
         返回:
-            与 x 同形状（每个位置到最近原型的距离即该位置的分数）
+            与 x 同形状，每个元素是该通道到最近原型的加权距离
         """
         lead_shape = x.shape[:-1]
-        x_flat = x.reshape(-1, self.feature_dim)  # (N, D)
         normalized_weights = F.softmax(self.scale_weights, dim=0)
 
-        # ---- 向量化原型匹配 ----
-        # 旧代码：for t in range(seq_len): F.pairwise_distance(x[:,t,:], prototypes)
-        # 新代码：cdist 一次性算完所有位置
-        total_score = torch.zeros(x_flat.shape[0], device=x.device, dtype=x_flat.dtype)
-        for i, scale in enumerate(self.scales):
-            prototypes = self.prototypes[f"scale_{scale}"]  # (num_proto, D)
-            distances = torch.cdist(x_flat, prototypes, p=2.0)  # (N, num_proto)
-            min_distance = distances.min(dim=1)[0]  # (N,)
-            total_score = total_score + min_distance * normalized_weights[i]
+        # (..., C) -> (N, C)
+        x_flat = x.reshape(-1, self.n_features)  # (N, C)
 
-        return total_score.reshape(*lead_shape)
+        total_score = torch.zeros_like(x_flat)
+        for i, scale in enumerate(self.scales):
+            # prototypes: (C, P) -> (1, C, P)，与 (N, C, 1) 广播
+            protos = self.prototypes[f"scale_{scale}"].unsqueeze(0)  # (1, C, P)
+            # (N, C, 1) - (1, C, P) -> (N, C, P)
+            # 第2 维是 C（逐通道），第 3 维是 P（原型）
+            # 距离定义：通道 c 的值到该通道 P 个原型的 L1 距离
+            diff = (x_flat.unsqueeze(-1) - protos).abs()   # (N, C, P)
+            # 先在 P 维取 min → 每通道一个最近原型距离 → (N, C)
+            min_dist = diff.min(dim=2)[0]
+            total_score = total_score + min_dist * normalized_weights[i]
+
+        return total_score.reshape(*lead_shape, self.n_features)
 
 
 class UncertaintyEstimation(nn.Module):
@@ -247,6 +259,12 @@ class DualPathModel(nn.Module):
         # 如果要固定，允许配置权重比例（而非写死 0.2/0.8）
         self.fixed_recon_weight = mp.get("fixed_recon_weight", 0.5)
         self.fixed_proto_weight = mp.get("fixed_proto_weight", 0.5)
+        # 通道分数聚合方式：max（任一通道异常即异常）/ mean（平均，抑制单通道噪声）
+        # 可选 topk_mean：取分数最高的 k 个通道求平均，兼顾两者
+        self.aggregate = mp.get("aggregate", "max")
+        self.aggregate_topk = mp.get("aggregate_topk", 3)
+        assert self.aggregate in ("max", "mean", "topk_mean"), \
+            f"aggregate 必须是 max / mean / topk_mean，当前为 {self.aggregate}"
 
         self.preprocessing = TimeFrequencyPreprocessing(
             freq_components=self.freq_components,
@@ -270,7 +288,7 @@ class DualPathModel(nn.Module):
             output_dim=self.n_features,
         )
         self.prototype_path = MultiScalePrototypeMatchingPath(
-            feature_dim=self.n_features, scales=(1, 2, 4), prototypes_per_scale=8
+            n_features=self.n_features, scales=(1, 2, 4), prototypes_per_scale=8
         )
         self.uncertainty_estimation = UncertaintyEstimation(
             input_dim=self.hidden_dim + 2
@@ -295,14 +313,15 @@ class DualPathModel(nn.Module):
         # ---- 原型路径：逐通道原型距离 (B, W) ----
         # 原型匹配作用在重构误差特征上：语义是"这个点离正常原型有多远"，
         # 重构误差恰好是该语义的直接度量
-        prototype_score = self.prototype_path(recon_error_mv)     # (B,W)
-        # 多变量时：各通道分数用 max 聚合 → 任一通道异常即该时间点异常
-        if self.n_features > 1:
-            prototype_score_mv = prototype_score
-            recon_error = recon_error_mv.max(dim=2)[0]             # (B,W)
+        prototype_score_mv = self.prototype_path(recon_error_mv)     # (B,W,C)
+
+        # ---- 通道分数聚合 (B,W,C) -> (B,W) ----
+        if self.n_features == 1:
+            prototype_score = prototype_score_mv.squeeze(2)          # (B,W)
+            recon_error = recon_error_mv.squeeze(2)                  # (B,W)
         else:
-            prototype_score_mv = prototype_score.unsqueeze(2)      # (B,W,1)
-            recon_error = recon_error_mv.squeeze(2)               # (B,W)
+            prototype_score = self._aggregate(prototype_score_mv)     # (B,W)
+            recon_error = self._aggregate(recon_error_mv)            # (B,W)
 
         uncertainty_input = torch.cat(
             [global_feature, recon_error.unsqueeze(2), prototype_score.unsqueeze(2)],
@@ -334,6 +353,27 @@ class DualPathModel(nn.Module):
             "weights": {"recon": weight_recon, "prototype": weight_prototype},
             "fused_score": fused_score,
         }
+
+    def _aggregate(self, scores_mv):
+        """
+        通道分数聚合：(B, W, C) -> (B, W)
+
+        三种策略：
+        - max       取最大值。语义"任一通道异常即异常"，但对单通道噪声最敏感
+        - mean      取平均值。抑制噪声，但会稀释稀疏异常信号
+        - topk_mean 取分数最高的 k 个通道求平均。max 与 mean 的折中
+
+        多变量异常检测中max 最常见，调研假设"SMAP/MSL 的异常分散、
+        max 被噪声主导"，此方法用于验证该假设。
+        """
+        if self.aggregate == "max":
+            return scores_mv.max(dim=2)[0]
+        if self.aggregate == "mean":
+            return scores_mv.mean(dim=2)
+        # topk_mean
+        k = min(self.aggregate_topk, scores_mv.size(2))
+        topk_vals, _ = scores_mv.topk(k, dim=2)
+        return topk_vals.mean(dim=2)
 
     def _prototype_per_channel(self, feat, recon_error_mv):
         """

@@ -63,6 +63,10 @@ def build_config(n_features, args):
     mp = config["model_params"]
     mp["n_features"] = n_features
     mp["freq_feature_dim"] = 64
+    # 通道分数聚合方式（消融实验用）
+    if getattr(args, "aggregate", None):
+        mp["aggregate"] = args.aggregate
+        mp["aggregate_topk"] = getattr(args, "aggregate_topk", 3)
     # 多变量序列长，窗口适当加大
     if args.window_size is not None:
         mp["window_size"] = args.window_size
@@ -138,20 +142,28 @@ def run_one(name, args, device=None, save_dir=None):
 
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
+        agg = config["model_params"].get("aggregate", "max")
+        suffix = "" if agg == "max" else f"_{agg}"
         result = {
             "dataset": name,
             "n_features": n_features,
+            "aggregate": agg,
             "metrics": metrics,
             "train_losses": train_losses,
             "config": {k: v for k, v in config.items() if k != "data_params"},
         }
-        path = os.path.join(save_dir, f"{name}_mv_results.json")
+        path = os.path.join(save_dir, f"{name}{suffix}_mv_results.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, ensure_ascii=False, default=str)
-        np.save(os.path.join(save_dir, f"{name}_mv_scores.npy"), scores)
+        np.save(os.path.join(save_dir, f"{name}{suffix}_mv_scores.npy"), scores)
         print(f"  [保存] {path}")
 
-    return {"dataset": name, "n_features": n_features, "metrics": metrics}
+    return {
+        "dataset": name,
+        "n_features": n_features,
+        "aggregate": config["model_params"].get("aggregate", "max"),
+        "metrics": metrics,
+    }
 
 
 def smoke_test(device=None):
@@ -219,6 +231,11 @@ def main():
     parser.add_argument("--window-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--aggregate", type=str, default=None,
+                        choices=["max", "mean", "topk_mean"],
+                        help="通道分数聚合方式（消融实验用）")
+    parser.add_argument("--aggregate-topk", type=int, default=3,
+                        help="topk_mean 策略下的 k 值")
     parser.add_argument("--max-points", type=int, default=None,
                         help="每个数据集最多用多少时间点（调试用）")
     parser.add_argument("--start-offset", type=int, default=0,

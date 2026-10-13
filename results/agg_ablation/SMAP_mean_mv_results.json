@@ -1,0 +1,54 @@
+{
+  "dataset": "SMAP",
+  "n_features": 25,
+  "aggregate": "mean",
+  "metrics": {
+    "top_1": 0.0,
+    "top_3": 0.0,
+    "top_5": 0.0,
+    "auroc": 0.46946155847051385,
+    "vus_roc": 0.46946155847051385,
+    "vus_pr": 0.009275928472486237,
+    "f1": 0.027278562259306804,
+    "precision": 0.013827883520416463,
+    "recall": 1.0,
+    "threshold": 0.0710619577517112,
+    "method": "oracle_threshold_search"
+  },
+  "train_losses": [
+    0.24848766270137967,
+    0.192934398731542,
+    0.1892359774737131,
+    0.18730712173477052,
+    0.18484739178702944
+  ],
+  "config": {
+    "model_params": {
+      "window_size": 64,
+      "hidden_dim": 128,
+      "freq_components": 16,
+      "temperature": 0.1,
+      "lambda1": 0.1,
+      "lambda2": 0.01,
+      "num_heads": 4,
+      "num_layers": 3,
+      "use_fixed_weights": false,
+      "n_features": 25,
+      "freq_feature_dim": 64,
+      "aggregate": "mean",
+      "aggregate_topk": 3
+    },
+    "train_params": {
+      "epochs": 5,
+      "batch_size": 128,
+      "learning_rate": 0.0005,
+      "patience": 10,
+      "weight_decay": 1e-05,
+      "max_grad_norm": 0.5
+    },
+    "detect_params": {
+      "stride": 1,
+      "batch_size": 256
+    }
+  }
+}
