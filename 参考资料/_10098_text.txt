@@ -1,0 +1,1046 @@
+Federated Causally Invariant Feature Learning
+Xianjie Guo1,2, Kui Yu1,2*, Lizhen Cui3, Han Yu4, Xiaoxiao Li4,5,6
+1School of Computer Science and Information Engineering, Hefei University of Technology, China
+2Key Laboratory of Knowledge Engineering with Big Data of Ministry of Education, China
+3School of Software, Shandong University, China
+4College of Computing and Data Science, Nanyang Technological University, Singapore
+5Department of Electrical and Computer Engineering, The University of British Columbia, Canada
+6V ector Institute, Canada
+xianjieguo@mail.hfut.edu.cn, yukui@hfut.edu.cn, clz@sdu.edu.cn, han.yu@ntu.edu.sg, xiaoxiao.li@ece.ubc.ca
+Abstract
+Federated feature selection (FFS) is a promising field for se-
+lecting informative features while preserving data privacy in
+federated learning (FL) settings. Existing FFS methods fo-
+cus on capturing the correlations between features and labels.
+They struggle to achieve satisfactory performance in the face
+of data distribution heterogeneity among FL clients, and can-
+not address the out-of-distribution (OOD) problem that arises
+when a significant portion of clients do not actively partici-
+pate in FL training. To address these limitations, we propose
+Federated Causally Invariant Feature Learning (FedCIFL),
+a novel approach for learning causally invariant features in
+a privacy-preserving manner. We design a sample reweight-
+ing strategy to eliminate spurious correlations introduced by
+selection bias and iteratively estimate the federated causal ef-
+fect between each feature and the labels (with the remaining
+features initially treated as confounders). By iteratively re-
+fining the confounding feature set to identify the true con-
+founders, FedCIFL mitigates the impact of limited local
+data on the accuracy of federated causal effect estimation.
+Theoretical analysis proves the correctness of FedCIFL un-
+der reasonable assumptions. Extensive experiments on syn-
+thetic and real-world datasets demonstrate the superiority of
+FedCIFL against eight state-of-the-art baselines, beating the
+best-performing approach by 3.19%, 9.07% and 2.65% in
+terms of average test Accuracy, RMSE and F1 score, re-
+spectively. It is a first-of-its-kind FFS approach capable of
+handling Non-IID and OOD data simultaneously. The source
+code is available at https://github.com/Xianjie-Guo/FedCIFL.
+1 Introduction
+Background In recent years, feature selection has become
+an increasingly important research topic due to its ability
+to improve model performance, reduce computational com-
+plexity, and enhance interpretability (Khaire and Dhanalak-
+shmi 2022; Guo et al. 2022b; Xiao et al. 2022). Under fed-
+erated learning (FL) settings (Y ang et al. 2019; Y ang, Fan,
+and Y u 2020; Kairouz et al. 2021; Guo et al. 2021; Li et al.
+2024; Ren et al. 2024; Guo et al. 2024b), data are often dis-
+tributed across multiple FL clients, making it challenging to
+perform feature selection across the entire dataset. This has
+led to the emergence of federated feature selection (FFS),
+*Corresponding Author
+Copyright © 2025, Association for the Advancement of Artificial
+Intelligence (www.aaai.org). All rights reserved.
+which aims to select informative features while preserving
+data privacy (Banerjee, Elmroth, and Bhuyan 2021).
+Challenges Recently, the FFS problem (Banerjee, Elm-
+roth, and Bhuyan 2021; Cassar ´a, Gotta, and V alerio 2022;
+Hu et al. 2022, 2023; Zhang et al. 2023; Hermo, Bol ´on-
+Canedo, and Ladra 2024; Banerjee et al. 2024) has been
+explored by considering scenarios where data are either
+Independent and Identically Distributed (IID) (Hu et al.
+2023) or Non-Independent and Identically Distributed (Non-
+IID) (Banerjee, Elmroth, and Bhuyan 2021) across FL
+clients. A more detailed treatment of related work can be
+found in Appendix B.1. However, practical FL often in-
+volves a vast number of clients with diverse data distribu-
+tions. Furthermore, a significant proportion of these clients
+might not actively participate in the FL training process. As
+a result, the discrepancy in data distributions between the
+participating and non-participating (i.e., unseen) FL clients
+can cause the suboptimal performance of the trained models
+when applied to the unseen clients’ data, a challenge com-
+monly referred to as the out-of-distribution (OOD) prob-
+lem (Y uan et al. 2022). This issue poses a critical challenge
+in FL, as the models trained on the participating clients’ data
+might not generalize well to the unseen clients, thus limiting
+their applicability and effectiveness.
+Motivation Existing FFS methods primarily exploit the
+correlation between labels and features. They cannot address
+the selection bias (Huang and Wu 2024) present in the data,
+resulting in the inability to learn feature subsets with strong
+generalization ability. Although some works attempt to ad-
+dress the OOD problem (Guo et al. 2023) and domain adap-
+tation (Sun et al. 2021) in FL settings, they focus on learning
+generalizable representations in the representation space for
+classification tasks. While these methods can achieve satis-
+factory performance, they have poor interpretability as it is
+difficult to determine which original features have truly in-
+variant relationships with the labels.
+Contributions In this paper, we focus on learning causally
+invariant features in the original feature space to jointly
+address the challenges of Non-IID and OOD in FL set-
+tings. By leveraging the invariant property of causal features,
+we propose Federated Causally Invariant Features Learning
+(FedCIFL), a method for learning causally invariant fea-
+tures in a privacy-preserving manner to address the complex
+The Thirty-Ninth AAAI Conference on Artificial Intelligence (AAAI-25)
+16978
+Training Set 
+and Test Set 
+Relationship
+Relationship of 
+Training Sets on 
+Different Clients
+OOD
+IND
+IID Non-IID
+Existing work
+Ours
+Scenario 3
+Scenario 1 Scenario 2
+Scenario 4
+Federated Feature Selection Task
+Figure 1: FedCIFL vs. existing works.
+scenarios 3 and 4 as illustrated in Figure 1.
+Specifically, FedCIFL first reweights samples on each
+client’s local data with the aim of eliminating spurious cor-
+relations introduced by selection bias and learning the true
+causal relationships between labels and invariant features.
+Each FL client then computes the causal effect between each
+feature and the labels (by treating the remaining features
+as confounders) to obtain its local irrelevant feature sub-
+set. These subsets are sent to the FL server for alignment
+to produce the optimal irrelevant feature subset. However,
+the limited local data on each FL client might preclude the
+sample reweighting strategy from effectively learning the
+causal effect between labels and each feature when the con-
+founder set is large. To address this issue, FedCIFL iter-
+atively removes selected irrelevant features from the con-
+founder set, and then repeats the aforementioned steps. This
+iterative process continues until no more irrelevant feature
+subsets are learned. The remaining features make up the
+invariant causal feature subset. By gradually reducing the
+size of the confounder set, FedCIFL mitigates the impact
+of limited local data on the accuracy of sample reweighting
+and, consequently, on causal effect estimation. Learning in-
+variant features having a causal relationship with the labels
+enables strong generalization ability and interpretability.
+To the best of our knowledge, FedCIFL is the first
+approach designed to perform FFS under Non-IID and
+OOD settings. Under reasonable assumptions, we theoret-
+ically prove the correctness of FedCIFL. Extensive experi-
+ments on both synthetic and real-world datasets demonstrate
+the superiority of FedCIFL against eight state-of-the-art
+baselines, beating the best-performing approach by 3.19%,
+9.07% and 2.65% in terms of average test Accuracy, RMSE
+and F1 score, respectively.
+2 Preliminaries
+Notations and Definitions. In this paper, we focus on
+the horizontal FL setting, consisting of an FL server and
+a set of m FL clients {ck}k∈{1,2,...,m} with the same fea-
+ture space. Each client ck owns a private labeled dataset
+{(Xck , Yck )}mk=1, where Xck = {xcki }nki=1 follows distri-
+bution P ck over the feature space X = {X1, X2, . . . , Xd}
+(i.e., xcki ∼ Pck ). Yck = {ycki }nki=1 denotes the ground-truth
+labels of Xck . The total number of samples across all clients
+is denoted by n = Pmk=1 nk. This paper focuses on Scenario
+3 and Scenario 4 as illustrated in Figure 1. For Scenario 3,
+the data on different clients are IID, but the training set and
+the test set are OOD (i.e., P ck1 = P ck2 ∧ Pck1 ̸= Ptest for
+∀k1 ̸= k2, k1, k2 ∈ {1,2, . . . , m}). For Scenario 4, the data
+on different clients are Non-IID, and the training set and the
+test set are OOD (i.e.,P ck1 ̸= P ck2 ∧P ck1 ̸= Ptest∧P ck2 ̸=
+Ptest for ∀k1 ̸= k2, k1, k2 ∈ {1,2, . . . , m}).
+For each client, we assume that the feature spaceX can be
+partitioned into two disjoint subsets: X = {C, V}. We de-
+fine C as the set of invariant causal features, and refer to the
+remaining features V = X \ C as irrelevant features, where
+the following assumption characterizes their properties:
+Assumption 1 ((Kuang et al. 2018)). There exists a prob-
+ability mass function P (y|c) such that for all distributions
+P ∈ {Pc1 , . . . ,P cm , Ptest}, P r(YP = y|CP = c, VP =
+v) = P r(YP = y|CP = c) = P (y|c).
+By learning a model that captures the invariant function
+P (y|c) under Assumption 1, FedCIFL can learn invariant
+causal features across all clients, and achieve strong gener-
+alization ability and interpretability across Scenario 3 and
+Scenario 4. We also adopt the overlap assumption, which is
+commonly used in the literature on treatment effect estima-
+tion (Athey, Imbens, and Wager 2018):
+Assumption 2 (Overlap). F or each clientck, when setting
+any feature Xck·,j as the treatment feature, it satisfies 0 <
+P (Xck·,j = 1|X ck·,−j) < 1, ∀j, where Xck·,j denotes the j-th
+feature in Xck , and Xck·,−j = Xck \ Xck·,j represents all other
+features obtained by removing the j-th feature from Xck .
+Accurately estimating causal effects between features
+and labels requires identifying the appropriate set of con-
+founders, which influence both the feature and the label
+(Definition 1). Failure to account for confounders leads to
+biased causal effect estimates. In FL scenarios with limited
+local samples, selecting a suitable confounder set is crucial
+for achieving sample balance between treatment and control
+groups, ensuring accurate causal effect estimation.
+Definition 1 (Confounders (Cai et al. 2023)). A variable Z
+is a confounder for the effect of featureX on label Y if: 1) Z
+is associated with X: P (X|Z) ̸= P (X), 2) Z is associated
+with Y conditional on X: P (Y |X, Z) ̸= P (Y |X), and 3)
+Z is not a descendant of X in the causal graph.
+Supervised AutoEncoder . An unsupervised autoencoder
+is a feed-forward neural network consisting of an input layer,
+one or more hidden layers, and an output layer. The au-
+toencoder framework consists of two phases: encoding and
+decoding. Specifically, given input data Xck , the autoen-
+coder first employs multiple nonlinear encoding processes
+to learn low-dimensional representations ξ(Xck ) of Xck .
+Subsequently, the autoencoder decodesξ(Xck ) to obtain the
+reconstructed output data ˆXck . The encoding and decoding
+processes can be formalized as:
+Encode :ξ(t) = σ(ξ(t−1)U(t)1 + b(t)1 ), t= 1, 2, . . . , l,
+Decode :ψ(t) = σ(ψ(t−1)U(t)2 + b(t)2 ), t= 1, 2, . . . , l,(1)
+where σ is a nonlinear activation function (e.g., sig-
+moid function). l is the number of hidden layers. Here,
+16979
+ξ(0) = Xck , and ξ(l), denoted by ξ(·), represents the low-
+dimensional representations of Xck . In addition, ψ(0) =
+ξ(l), and U(t)1 and U(t)2 are the weight matrices, while b(t)1
+and b(t)2 are the bias vectors. The autoencoder optimizes
+ξ(Xck ) by minimizing the reconstruction error betweenXck
+and ˆXck . To further improve the quality of low-dimensional
+representations ξ(Xck ), the supervised autoencoder uses the
+label information and incorporates a cross-entropy loss ℓ(·)
+into the objective function. Thus, the objective function of a
+supervised autoencoder is formalized as follows:
+Lcksae = 1nk Xck − ˆXck 22 + λ1 lXt=1 2Xa=1 U(t)a 22 + b(t)a 22
++ λ2ℓ(f (ξ(Xck )), Yck ),
+(2)
+where f (·) is a classifier, and λ1 and λ2 are the balancing
+parameters.
+3 The Proposed FedCIFL Method
+As illustrated in Figure 2, the proposed FedCIFL method
+consists of four iterative steps. Sections 3.1, 3.2, 3.3 and 3.4
+respectively describes each of them. The detailed pseudo-
+code of FedCIFL is provided inAppendix C, while theoret-
+ical analysis about the privacy and communication overhead
+of FedCIFL are presented in Appendix D.
+3.1 Sample Weight Learning and Causal Effect
+Estimation
+Sample Weight Learning. As introduced in Section 2,
+the key challenge in estimating causal effects from observa-
+tional data is to remove the confounding bias (Rubin 1973)
+induced by confounders that affect both the treatment T and
+the label. To this end, a confounder balancing technique is
+designed. Specifically, given a treatment featureT , when es-
+timating its causal effect on the label, we first need to iden-
+tify confounders. However, in observational studies, prior
+knowledge of the causal structure is unknown, meaning we
+do not know which features are confounders. Therefore, ini-
+tially, all remaining features are treated as potential con-
+founders (i.e., the confounder set of T for each FL client
+is X \ {T}). Samples are then divided into two groups based
+on their T values, with T = 1 indicating a treatment group,
+and T = 0 indicating a control group. The causal effect of
+T on the label can be estimated by comparing the average
+difference between the treatment and control groups.
+However, in practice, FL clients not only have differ-
+ent sample spaces but also typically possess limited lo-
+cal data, potentially leading to widespread sample selection
+bias. Consequently, the distribution of the treatment group
+often differs from that of the control group. Moreover, to
+select causally invariant features, we need to estimate the
+causal effect of each feature on the label. However, learning
+a separate set of sample weights for each feature is impracti-
+cal, especially in FL scenarios with a large number of clients
+and potentially high-dimensional data. Inspired by (Kuang
+et al. 2018; Y ang et al. 2023), we propose to learn a single
+set of weights W from a global perspective to align the dis-
+tributions of the treatment and control groups corresponding
+to each feature. Consequently, the loss function for optimiz-
+ing the sample weight set W ck on client ck is:
+Lcksw =
+dX
+j=1
+ nkXi=1 W cki · xcki · T ji − nkXi=1 W cki · xcki · (1 − T ji )22
++ λ3
+ nkX
+i=1
+W cki − nk
+!2
++ λ4
+nkX
+i=1
+(W cki − 1)2 ,
+(3)
+where W cki is the weight of xcki . λ3 and λ4 are the balancing
+parameters. T ji ∈ {0,1} denotes the value of thej-th feature
+when it is considered as the treatment feature for the i-th
+sample in Xck . Pnki=1 W cki · xcki · T ji and Pnki=1 W cki · xcki ·
+(1 − T ji ) are the first-order moments of the treatment and
+control groups, respectively, for feature T .
+In practice, nonlinear relationships among features and
+noise in the data can easily disrupt the balance of the data
+distribution between the treatment and control groups, lead-
+ing to suboptimal quality of the learned weights W ck . To
+address this issue, we designed a supervised autoencoder,
+which offers several advantages. Firstly, it reduces the di-
+mensionality of the confounders, thereby reducing the re-
+quired sample size for local data on each client. Secondly,
+it captures nonlinear relationships among features, enabling
+a more accurate representation of the data. Thirdly, it mit-
+igates the impact of noise in the original data, enhancing
+the robustness of the learned weights. Once the supervised
+autoencoder model is learned using Eq. (2) with input data
+Xck and the label Yck , the low-dimensional representations
+of the treatment and control groups can be obtained. Conse-
+quently, Eq. (3) can be rewritten as:
+L
+ck
+sw2 = λ3
+ nkX
+i=1
+W
+ck
+i − nk
+!2
++ λ4
+nkX
+i=1
+ 
+W
+ck
+i − 1
+2 + dX
+j=1
+ ξ(Xck·,−j )T · (W ck ⊙ Xck·,j )(W ck )T · Xck·,j − ξ(Xck·,−j )T · (W ck ⊙ (1 − Xck·,j ))(W ck )T · (1 − Xck·,j ) 22 ,
+(4)
+where ⊙ is the Hadamard product. To improve the conver-
+gence speed of the reweighting loss function Lcksw2, we dis-
+cretize the values of each representation in ξ(Xck·,−j) into
+(ω+1) evenly spaced constants in the range of[0, 1]. Specif-
+ically, for ∀i, q, [ξ(Xck·,−j)]i,q ∈ {0,1ω , 2ω , . . . ,1}, where
+q ∈ {1,2, . . . , p} and p = dim(ξ(Xck·,−j)). Since ξ(Xck·,−j)
+is a low-dimensional representation ofXck·,−j, we extend As-
+sumption 2 from the binary original feature space to the
+multi-valued low-dimensional representation space and pro-
+pose the following reasonable assumption:
+Assumption 3. F or each FL clientck, when setting any fea-
+ture Xck·,j as the treatment feature, it satisfies 0 < P(Xck·,j =
+1|ξ(Xck·,−j)) < 1, ∀j.
+Then, we have Lemma 1 and Theorem 1 (proofs can be
+found in Appendix A.1and Appendix A.2, respectively).
+Lemma 1. If for ∀j, 0 < P(Xck·,j = 1|ξ (Xck·,−j)) < 1, and
+Xck is binary, then for ∀i, 0 < P(([ξ(Xck·,−j)]i,·, Xcki,j) =
+x) < 1, where ([ξ(Xck·,−j)]i,·, Xcki,j) is a sample of length
+(p + 1), formed by concatenating the i-th row of the low-
+dimensional representation space [ξ(Xck·,−j)]i,· with Xcki,j.
+16980
+Client c1
+Server
+Client c2 Client cm
+1
+2 4
+3
+1
+2
+3
+4
+Privacy preserving
+X
+() X
+( ( ( )), )f 
+ XY
+( ): low-dimensional representations 
+( ): classifierf 
+( ): cross-entropy loss
+Sample weight
+1 2
+34
+Repeat until
+Learning Sample Weights and Estimating Causal Effects
+Sending Potential Irrelevant Features and Causal Effects
+Threshold
+{}kkccirr irr jSS X=
+kc
+j 
+12[ , ,..., ]k k kc c c d  
+Irrelevant feature set
+kc
+Determining the Optimal Irrelevant Feature Set
+Sending the Latest Confounders and Updating Local Data
+Weighted voting
+*| |irrS
+12() mccc    
+*
+irrS
+Bottom (index)
+*| |irrS
+Xj Xj
+*
+irrS
+Exclude Update local data
+* 0| |irrS =
+Federated Causally Invariant Feature Learning (FedCIFL)
+kcW
+causal effects: 
+12 |, |,..., |}{| | | mcccirr irr irrS S S
+Global balancing
+,1
+kkcc
+XX
+,2
+kkcc
+XX
+,
+kkcc
+d
+XX
+,1() kc −
+X
+,2() kc −
+X
+,() kc d −
+X
+( , )k k k kc c c cW 
+ XY
+*,\k k k irrc c c S=
+X X X
+Y Y
+\{ }jX
+*\{ }irr jSX
+ˆX
+2
+2
+ˆ−XX
+Figure 2: An overview of the proposed FedCIFL method.
+Theorem 1. Under Lemma 1, if the dimension p of the low-
+dimensional representation spaceξ(Xck·,−j) is finite, then ∃ a
+W ck such that P (limnk→∞ Pdj=1 ∥ ξ(Xck·,−j )T ·(W ck ⊙Xck·,j )(W ck )T ·Xck·,j −
+ξ(X
+ck
+·,−j )T ·(W ck ⊙(1−Xck·,j ))
+(W ck )T ·(1−Xck·,j ) ∥22 = 0) = 1. In particular , a
+W ck solution that satisfies the above equation is ˆW cki =
+1/P (([ξ(Xck·,−j)]i,·, Xcki,j) = x).
+Therefore, based on Theorem 1 and Eq. (4), we can theo-
+retically learn the optimal sample weights on the local data
+of each FL client under certain conditions.
+Causal Effect Estimation. By learning the sample
+weights W ck at each FL client ck, the confounding bias
+can be eliminated. It can be demonstrated that once the con-
+founding bias is removed, the correlation between a given
+feature T and the label represents the causal effect (Kuang
+et al. 2017). Inspired by this, we design a weighted cross-
+entropy loss function, which is to be minimized, to estimate
+the causal effect of each feature on the label at client ck as:
+Lckwce = −
+nkX
+i=1
+W cki · (ycki · log 11 + exp(−xcki · βck ) +
+(1 − ycki ) · log(1 − 11 + exp(−xcki · βck ) )) + λ5∥βck ∥1,(5)
+where ycki is the label of xcki , βckj is the causal effect be-
+tween the j-th feature and the label at clientck, and λ5 is the
+balancing parameter.
+3.2 Transmission of Potentially Irrelevant
+Features and Causal Effects
+Based on Eq. (5), at client ck, we can learn the causal effect
+values βck = [ βck1 , βck2 , . . . , βckd ]T of each feature on thelabel. Due to the diverse sample spaces across FL clients,
+the learned {βck }k∈{1,2,...,m} might vary significantly. This
+step aims to determine the potentially irrelevant feature sets
+learned on each client based on βck , and send them to the
+server to determine the optimal irrelevant feature set in Sec-
+tion 3.3. Specifically, given a fixed threshold δ > 0, if
+|βckj | ≥δ, the j-th feature at ck is considered a causally
+invariant feature; otherwise, it is deemed as an irrelevant fea-
+ture. Let Sckirr denote the irrelevant feature set learned by ck.
+We have: Sckirr = Sckirr ∪ {Xj} if |βckj | < δ. Finally, the ir-
+relevant feature sets of all FL clients {Sckirr}k∈{1,2,...,m} can
+be obtained.
+3.3 Optimization of the Irrelevant Feature Set
+To learn the optimal irrelevant feature set S∗irr across all
+clients, the first step is to determine the optimal number of
+elements in the irrelevant feature set (i.e., |S∗irr|). A com-
+mon approach is perform majority voting using the learned
+|Sckirr|k∈{1,2,...,m} from all clients to determine the mode
+|S∗irr|. However, in practice, FL systems often face conflicts
+arising from multiple modes. Traditional approaches resolve
+such conflicts by assuming knowledge of each client’s sam-
+ple size and performing weighted decision-making based on
+this information (Y ang et al. 2019). Here, the sample size of
+16981
+clients is often considered a form of privacy as well (Guo
+et al. 2024a). To achieve a higher degree of privacy protec-
+tion, we propose a novel strategy that assumes the sample
+size of each client is unknown. Our approach is based on a
+key observation: when the autoencoder model is sufficiently
+expressive and the sample size is large enough, the super-
+vised autoencoder loss for each client will primarily be de-
+termined by the weight regularization term. This implies that
+clients with larger sample sizes are generally better at mini-
+mizing their local loss function, as they can more effectively
+learn the underlying data distribution.
+Following this observation, we can reasonably conclude
+that when the weight regularization terms are comparable
+across different clients during the training of autoencoder
+models, clients with larger sample sizes tend to achieve bet-
+ter optimization of their local loss function. This suggests
+that such clients should be given more weight in their con-
+tribution to the global model.
+Building on this theoretical foundation, we propose a
+stronger privacy-preserving strategy to handle conflicts aris-
+ing from multiple modes. We introduce a vector ∆ that rep-
+resents the weighted ranking of each client. This ranking
+is calculated based on Lcksae achieved by training a super-
+vised autoencoder using Eq. (2) on each client. According
+to the previous analysis, we assign higher weight rankings
+to clients with lower Lcksae values. Thus, ∆ is defined as:
+∆ = ˚Rank([Lc1sae, Lc2sae, . . . ,Lcmsae]). (6)
+˚Rank(·) takes a vector as input and returns a new vector of
+the same size, where each element in the output vector rep-
+resents the rank of the corresponding element in the input
+vector sorted in ascending order. For example, ∆(k) = 3
+indicates that client ck has the third highest weight rank-
+ing among all clients. If there exist multiple modes Mh ∈
+{M1, M2, . . .} in {|Sckirr|}k∈{1,2,...,m}, |S∗irr| can be calcu-
+lated as:
+|S∗irr| =arg minMh∈{M1,M2,... }(
+mX
+k=1
+∆(k)
+subject to |Sckirr| = Mh).
+(7)
+By adopting this strategy, FedCIFL can determine the op-
+timal size of the irrelevant feature set without requiring
+knowledge of individual clients’ sample sizes, thereby pro-
+viding stronger privacy protection. Subsequently, we rank
+the total causal effect of each feature on the label learned
+from all clients in descending order, and select the bottom
+|S∗irr| elements as the optimal set of irrelevant featuresS∗irr:
+S∗irr = ˚Bottom|S∗irr |(βc1 ⊕ βc2 ⊕ · · · ⊕βcm ). (8)
+˚Bottom|S∗irr | is used to obtain the feature index correspond-
+ing to the bottom |S∗irr| elements in a vector based on the
+order of their values.
+3.4 Latest Confounder Transmission and Local
+Data Updates
+In Section 3.1, we initially regarded all features in X (ex-
+cept for the treatment feature T ) as potential confounders.
+However, in FL scenarios with limited sample sizes in lo-
+cal datasets, identifying a set of confounders much larger
+than the true set makes it difficult to achieve sample bal-
+ance between treatment and control groups within each lo-
+cal dataset. In addition, if irrelevant features are mistakenly
+considered confounders, both treatment and control group
+data will include these irrelevant features, disrupting the bal-
+ance of true positive confounders. Consequently, the learned
+sample weight setW ck might be inaccurate. Recent research
+indicates that failing to adjust for confounders properly can
+lead to incorrect conclusions (Shi, Blei, and V eitch 2019;
+Y ao et al. 2021). In other words, if confounders are not
+well-balanced, the causal effect estimation will be flawed,
+resulting in low-quality causal feature sets. Therefore, re-
+moving irrelevant features from the confounder set is cru-
+cial to achieving a more accurate causal effect estimation.
+According to Definition 1, irrelevant features are definitively
+not confounders. Thus, we remove the learned optimal set of
+irrelevant features from the original feature spaceX , and up-
+date the original dataset Xck to enable more accurate causal
+effect estimation as:
+Xck = Xck \ Xck·,S∗irr . (9)
+Finally, as illustrated in Figure 2, FedCIFL naturally con-
+verges by iteratively executing Steps 1 to 4 until |S∗irr| = 0.
+4 Experimental Evaluation
+4.1 Experiment Settings
+Datasets. The datasets used in the experiments include the
+following two types.
+• Synthetic data. Firstly, we generate the featuresX =
+{C, V} = {C1, . . . , Cdc , V1, . . . , Vdv } ∼ N(0, 1) from an
+independent Gaussian distribution, where dc + dv = d. To
+make X binary, we set Xi,j = 1 when Xi,j > 0; otherwise,
+Xi,j = 0. To simulate complex causal relationships, we sep-
+arate the invariant causal features into a linear part Cl and
+a non-linear part Cn. Then, we generate the label data Y
+using the following function (Kuang et al. 2018):
+Y =1/(1 + exp(−
+X
+X·,j1 ∈Cl
+αj1 · X·,j1 −
+X
+X·,j2 ∈Cn
+βj2 · X·,j2 · X·,(j2+1))) + N (0, 0.2).
+(10)
+αj1 = ( −1)j1 · (j1%3 + 1) · d/3 and βj2 = d/2. To gen-
+erate different data distributions that simulate the complex
+scenarios as in Figure 1, we create a set of distributions
+{P c1 , . . . ,P cm , Ptest} by varying P (Y|V) with a bias rate
+r ∈ [0, 1]. Specifically, to emulate Scenario 3 (i.e., P ck1 =
+P ck2 ∧ Pck1 ̸= Ptest for ∀k1 ̸= k2, k1, k2 ∈ {1,2, . . . , m}),
+we set rck = 0.4 and rtest = 0.9. To emulate Scenario 4
+(i.e., P ck1 ̸= P ck2 ∧ Pck1 ̸= Ptest ∧ Pck2 ̸= Ptest for
+∀k1 ̸= k2, k1, k2 ∈ {1,2, . . . , m}), we set rtest = 0.9
+and then uniformly assign different bias rates to each client
+within the interval [0.1, 0.7] using the following equation:
+rck = 0.1+(k −1)∗ 0.7 − 0.1m − 1 , k ∈ {1,2, . . . , m}. (11)
+16982
+In addition, to further simulate practical FL scenarios, the
+local datasets at different clients are set to different sample
+sizes in our experiments. Let n = Pmk=1 nk be the sum ofsample sizes owned by them clients, the sample size of each
+local dataset is set as:
+n1 = ⌊ n2m ⌋, n k = n1 + ⌊ 2(n − mnc1 )m(m − 1) ⌋(k − 1), (12)
+where k ∈ {2,3, . . . , m}.
+• Real-world data. We also compare FedCIFL with
+the baselines on the Amazon Review dataset. Amazon Re-
+view is a cross-domain sentiment classification dataset of
+product reviews collected from four types of products:
+Books (B), DVDS (D), Electronics (E) and Kitchen appli-
+ances (K), each of which contains about 1,000 positive and
+1,000 negative reviews. In our experiments, we use the pre-
+processed version of the Amazon Review dataset reported in
+(Wang et al. 2018), and construct four tasks: 1) DEK→B, 2)
+BEK→D, 3) BDK→E and 4) BDE→K, where “DEK→B”
+indicates that the D, E and K domain datasets are used as
+the FL training data, and the B domain dataset is used as the
+testing data.
+Comparison Baselines. We compare FedCIFL with two
+state-of-the-art FFS methods: 1) Fed-FiS (Banerjee, Elm-
+roth, and Bhuyan 2021) and 2) FPSO-FS (Hu et al.
+2023). Since FedCIFL focuses on capturing causal fea-
+tures, we also include three state-of-the-art causal feature
+selection methods for a more comprehensive comparison:
+EAMB (Guo et al. 2022a), CVS (Kuang et al. 2023) and
+PCFS (Y ang et al. 2023). Since existing causal feature se-
+lection methods have not yet considered FL scenarios, we
+implement six additional FL variants of these methods:
+3) EAMB-V3, 4) EAMB-V5, 5) CVS-V3, 6) CVS-V5, 7)
+PCFS-V3 and 8) PCFS-V5. In these new baselines, “-V3”
+and “-V5” denote the use of 30% and 50% thresholds, re-
+spectively, when voting on the causal feature subsets learned
+from different clients to obtain the optimal causal feature
+subset. For more detailed discussions on these related works
+on causal feature selection methods, please refer to Ap-
+pendix B.2. Implementation details of the FedCIFL algo-
+rithm and the baselines are provided in Appendix E.
+Evaluation Metrics. Based on the selected features, we
+establish an FL system to train logistic regression (LR) and
+multilayer perceptron (MLP) classifiers separately. These
+classifiers are employed to perform classification tasks in an
+FL setting, where the training data is distributed across mul-
+tiple participating clients. We then evaluate the quality of the
+selected features using Test Accuracy, Root Mean Square
+Error (RMSE), and F1 score (Guo et al. 2022a; Xiao et al.
+2024). Comprehensive experimental results of various met-
+rics on the LR classifier can be found in Appendix F.
+4.2 Results and Discussion (Synthetic Data)
+We emulate Scenario 3 (i.e., the data on different clients
+are IID, but the training set and the test set are OOD) and
+Scenario 4 (i.e., the data on different clients are Non-IID,
+and the training set and the test set are OOD) from Fig-
+ure 1 on synthetic data. The experimental results are pre-
+3 5 8 12 20
+Number of clients
+0.30
+0.48
+0.65
+0.83
+1.01
+Accuracy ( ) (d = 40)
+3 5 8 12 20
+Number of clients
+0.11
+0.28
+0.44
+0.60
+0.76
+ RMSE ( ) (d = 40)
+3 5 8 12 20
+Number of clients
+0.35
+0.51
+0.68
+0.84
+1.01
+F1 score ( ) (d = 40)
+3 5 8 12 20
+Number of clients
+0.17
+0.38
+0.59
+0.80
+1.01
+Accuracy ( ) (d = 60)
+3 5 8 12 20
+Number of clients
+0.11
+0.30
+0.50
+0.70
+0.89
+ RMSE ( ) (d = 60)
+3 5 8 12 20
+Number of clients
+0.23
+0.43
+0.62
+0.82
+1.01
+F1 score ( ) (d = 60)
+EAMB-V3
+EAMB-V5
+CVS-V3
+CVS-V5
+PCFS-V3
+PCFS-V5
+Fed-FiS
+FPSO-FS
+FedCIFL (Ours)
+Figure 3: Results on synthetic datasets where data is IID
+across clients but OOD for the test set. A total of 6,000 sam-
+ples are unevenly distributed among {3, 5, 8, 12, 20} clients.
+3 5 8 12 20
+Number of clients
+0.43
+0.57
+0.70
+0.84
+0.98
+Accuracy ( ) (d = 40)
+3 5 8 12 20
+Number of clients
+0.17
+0.27
+0.36
+0.46
+0.55
+ RMSE ( ) (d = 40)
+3 5 8 12 20
+Number of clients
+0.56
+0.66
+0.77
+0.87
+0.98
+F1 score ( ) (d = 40)
+3 5 8 12 20
+Number of clients
+0.07
+0.30
+0.54
+0.78
+1.01
+Accuracy ( ) (d = 60)
+3 5 8 12 20
+Number of clients
+0.12
+0.27
+0.43
+0.58
+0.73
+ RMSE ( ) (d = 60)
+3 5 8 12 20
+Number of clients
+0.14
+0.36
+0.58
+0.80
+1.02
+F1 score ( ) (d = 60)
+EAMB-V3
+EAMB-V5
+CVS-V3
+CVS-V5
+PCFS-V3
+PCFS-V5
+Fed-FiS
+FPSO-FS
+FedCIFL (Ours)
+Figure 4: Results on synthetic datasets where data is Non-
+IID across clients and OOD for the test set.
+sented in Figures 3 and 4, respectively. In Figure 3, it can
+be observed that FedCIFL achieves the best performance
+on all metrics in most cases. Moreover, compared to other
+baselines, the performance of our method remains stable as
+the number of clients and the data dimension d increase.
+This demonstrates that FedCIFL indeed captures causally
+invariant features, leading to satisfactory generalization per-
+formance. Existing FFS algorithms (i.e., Fed-FiS and FPSO-
+FS) focus on capturing the correlation between features and
+labels, resulting in suboptimal performance and large fluc-
+tuations in metrics in this OOD scenario. Although existing
+causal feature selection algorithms aim to capture causal fea-
+tures, they lack reasonable and effective federated aggrega-
+tion strategies, leading to the loss of some causally invariant
+features or the inclusion of additional irrelevant features. As
+a result, their performance is inferior to FedCIFL.
+From Figure 4 which depicts a more complex federated
+training scenario, it can be seen that the performance gaps
+between FedCIFL and existing FFS and causal feature se-
+16983
+Metrics Tasks EAMB-V3 EAMB-V5 CVS-V3 CVS-V5 PCFS-V3 PCFS-V5 Fed-FiS FPSO-FS FedCIFL (Ours)
+Accuracy (↑)
+DEK→B 73.40±0.54 67.40±1.86 62.45±3.27 59.45±1.73 67.65±1.62 65.40±2.27 70.05±1.57 65.80±1.68 73.05±1.44
+BEK→D 75.89 ±1.46 69.52±1.13 67.62±1.88 60.35±1.16 69.47±1.86 66.02±2.78 72.48±1.50 76.29±0.83 79.85±2.02
+BDK→E 77.24 ±2.40 72.33±1.92 73.28±2.33 59.80±1.85 70.33±1.66 67.62±2.54 78.40±1.29 77.39±2.00 83.61±2.57
+BDE→K 79.20 ±2.14 72.28±1.89 74.94±1.05 58.55±2.35 75.84±2.50 69.12±2.19 82.56±1.77 79.80±2.60 84.01±2.32
+RMSE (↓)
+DEK→B 0.436±0.00 0.457±0.01 0.533±0.02 0.503±0.01 0.485±0.01 0.469±0.01 0.507±0.01 0.545±0.01 0.482±0.01
+BEK→D 0.415 ±0.01 0.442±0.01 0.496±0.01 0.493±0.00 0.467±0.01 0.466±0.01 0.471±0.02 0.434±0.01 0.412±0.02
+BDK→E 0.393 ±0.02 0.426±0.01 0.451±0.02 0.489±0.01 0.450±0.01 0.460±0.01 0.407±0.01 0.414±0.02 0.362±0.03
+BDE→K 0.377 ±0.01 0.425±0.00 0.431±0.00 0.487±0.00 0.412±0.02 0.457±0.01 0.361±0.01 0.398±0.03 0.358±0.02
+F1 (↑)
+DEK→B 74.49±0.81 69.03±1.07 62.05±3.83 52.94±2.96 68.64±1.73 64.86±1.63 65.00±2.59 57.49±3.31 69.36±2.38
+BEK→D 75.85 ±1.53 70.14±1.43 67.21±3.14 53.82±3.12 68.34±3.01 65.22±2.77 73.18±1.93 75.74±0.84 79.78±2.31
+BDK→E 76.92 ±2.70 73.11±2.47 72.82±3.18 63.57±2.22 70.24±2.05 62.37±3.11 77.32±1.91 77.08±2.60 83.01±2.86
+BDE→K 80.04 ±2.32 73.56±1.86 75.75±1.34 61.41±1.47 76.60±2.69 66.65±1.54 83.11±1.51 80.08±2.36 84.48±2.21
+Table 1: Accuracy (%), RMSE, and F1 score (%) of the 4 cross-domain tasks on the Amazon Review dataset.
+lection methods widen further, becoming more pronounced
+as the number of clients and data dimensionsd increase. The
+stable performance exhibited by FedCIFL further demon-
+strates that it accurately estimates the causal effects between
+features and labels even in complex FL scenarios with lim-
+ited samples, enabling the selection of causally invariant fea-
+tures and achieving strong generalization.
+4.3 Results and Discussion (Real-World Data)
+The experimental results on the Amazon Review dataset us-
+ing the MLP classifier, as presented in Table 1, demonstrate
+the superiority of FedCIFL in learning causally invariant
+features for improved cross-domain generalization. It out-
+performs all baselines on most cross-domain tasks, includ-
+ing state-of-the-art FFS methods and causal feature selec-
+tion methods. The superior performance of FedCIFL can
+be attributed to its ability to effectively capture the underly-
+ing causal relationships between features and labels, while
+mitigating the impact of data heterogeneity and distribution
+shift. The satisfactory performance of FedCIFL across dif-
+ferent cross-domain tasks highlights its robustness to various
+domain adaptation scenarios in real-world applications.
+4.4 Ablation Study
+To validate the effectiveness of each module in FedCIFL,
+we conduct extensive ablation experiments. Specifically, we
+develop three variants of FedCIFL: “FedCIFL w/o iter”,
+“FedCIFL w/o SAE” and “FedCIFL w/o weighting”. “Fed-
+CIFL w/o iter” represents a variant of FedCIFL that does
+not employ the iterative strategy to optimize the confounder
+set and instead executes Steps 1 to 4 ofFedCIFL only once.
+“FedCIFL w/o SAE” denotes a variant of FedCIFL which
+does not utilize the supervised autoencoder to learn a low-
+dimensional representation space for balancing the sample
+distribution between the treatment and control groups, but
+instead directly balances the sample distribution in the orig-
+inal feature space. “FedCIFL w/o weighting” refers to a vari-
+ant of FedCIFL which does not employ the highly privacy-
+preserving weighted voting strategy based on Eq. (7) to re-
+solve conflicts arising from the presence of multiple modes.
+We then compare FedCIFL with these three variants un-
+der the synthetic Non-IID+OOD scenario (i.e., Scenario 4
+5 8 12 200.75
+0.83
+0.92
+1.00 Accuracy ( )
+5 8 12 200.15
+0.23
+0.32
+0.40 RMSE ( )
+5 8 12 200.80
+0.87
+0.93
+1.00 F1 score ( )
+5 8 12 200.75
+0.83
+0.92
+1.00 Accuracy ( )
+5 8 12 200.15
+0.23
+0.32
+0.40 RMSE ( )
+5 8 12 200.80
+0.87
+0.93
+1.00 F1 score ( )
+FedCIFL w/o iter
+FedCIFL w/o SAE
+FedCIFL w/o weighting
+FedCIFL (Ours)
+Figure 5: Experimental results of ablation experiments. The
+figure shows results for dimensions d = 40 and d = 60
+(from top to bottom), with client counts on the x-axis.
+in Figure 1). The results are presented in Figure 5. It can
+be observed that FedCIFL outperforms these three variants
+for all metrics across different data dimensions. This finding
+indicates that each key module in FedCIFL is effective and
+necessary for the FFS task.
+5 Conclusions and Future Work
+In this paper, we proposed FedCIFL, a novel federated
+causally invariant feature learning approach that addresses
+the challenges of data heterogeneity and OOD generaliza-
+tion in FL settings. At its core are a sample reweighting strat-
+egy and iterative refinement of the confounding feature set
+to identify true confounders, mitigating the impact of lim-
+ited local data on the accuracy of federated causal effect es-
+timation. Extensive experiments on synthetic and real-world
+datasets demonstrate the superiority of FedCIFL against
+state-of-the-art baselines, outperforming them in most cases
+in terms of average test accuracy, RMSE, and F1 score
+across various FL scenarios. To the best of our knowledge,
+FedCIFL is the first federated feature selection approach
+capable of handling Non-IID and OOD data simultaneously,
+achieving strong generalization ability and interoperability.
+In future work, we plan to extendFedCIFL to handle multi-
+label classification tasks, thereby broadening its applicabil-
+ity to a wider range of real-world scenarios.
+16984
+Acknowledgments
+X. Guo and K. Y u are supported by the National Sci-
+ence and Technology Major Project of China (Grant No.
+2021ZD0111801) and the National Natural Science Foun-
+dation of China (Grant No. 62376087). L. Cui is supported
+by NSFC No. 92367202. H. Y u and X. Li are supported by
+the Ministry of Education, Singapore, under its Academic
+Research Fund Tier 1. The research is also supported, in
+part, by the RIE2025 Industry Alignment Fund – Industry
+Collaboration Projects (IAF-ICP) (Award No. I2301E0026)
+administered by A*STAR, as well as supported by Alibaba
+Group and Nanyang Technological University Singapore
+through the Alibaba-NTU Global e-Sustainability CorpLab
+(ANGEL); and the National Research Foundation, Singa-
+pore and DSO National Laboratories under the AI Singapore
+Programme (AISG Award No. AISG2-RP-2020-019).
+References
+Athey, S.; Imbens, G. W.; and Wager, S. 2018. Approximate
+residual balancing: debiased inference of average treatment
+effects in high dimensions. Journal of the Royal Statistical
+Society Series B: Statistical Methodology, 80(4): 597–623.
+Banerjee, S.; Bhuyan, D.; Elmroth, E.; and Bhuyan, M.
+2024. Cost-Efficient Feature Selection for Horizontal Feder-
+ated Learning. IEEE Transactions on Artificial Intelligence.
+Banerjee, S.; Elmroth, E.; and Bhuyan, M. 2021. Fed-FiS:
+A novel information-theoretic federated feature selection for
+learning stability. In International Conference on Neural
+Information Processing, 480–487. Springer.
+Cai, R.; Huang, Z.; Chen, W.; Hao, Z.; and Zhang, K. 2023.
+Causal discovery with latent confounders based on higher-
+order cumulants. In International conference on machine
+learning, 3380–3407. PMLR.
+Cassar´a, P .; Gotta, A.; and V alerio, L. 2022. Federated fea-
+ture selection for cyber-physical systems of systems. IEEE
+Transactions on V ehicular Technology, 71(9): 9937–9950.
+Guo, S.; Zhang, T.; Y u, H.; Xie, X.; Ma, L.; Xiang, T.; and
+Liu, Y . 2021. Byzantine-resilient decentralized stochastic
+gradient descent. IEEE Transactions on Circuits and Sys-
+tems for Video Technology, 32(6): 4096–4106.
+Guo, X.; Y u, K.; Cao, F.; Li, P .; and Wang, H. 2022a. Error-
+aware Markov blanket learning for causal feature selection.
+Information Sciences, 589: 849–877.
+Guo, X.; Y u, K.; Liu, L.; Cao, F.; and Li, J. 2022b. Causal
+feature selection with dual correction. IEEE Transactions
+on Neural Networks and Learning Systems, 35(1): 938–951.
+Guo, X.; Y u, K.; Liu, L.; and Li, J. 2024a. FedCSL: A Scal-
+able and Accurate Approach to Federated Causal Structure
+Learning. In Proceedings of the AAAI Conference on Artifi-
+cial Intelligence, volume 38, 12235–12243.
+Guo, X.; Y u, K.; Wang, H.; Cui, L.; Y u, H.; and Li, X. 2024b.
+Sample Quality Heterogeneity-aware Federated Causal Dis-
+covery through Adaptive V ariable Space Selection. In Pro-
+ceedings of the International Joint Conference on Artificial
+Intelligence, 4071–4079. ijcai.org.
+Guo, Y .; Guo, K.; Cao, X.; Wu, T.; and Chang, Y . 2023.
+Out-of-distribution generalization of federated learning via
+implicit invariant relationships. In International Conference
+on Machine Learning, 11905–11933. PMLR.
+Hermo, J.; Bol ´on-Canedo, V .; and Ladra, S. 2024. Fed-
+mRMR: A lossless federated feature selection method. In-
+formation Sciences, 669: 120609.
+Hu, Y .; Zhang, Y .; Gao, X.; Gong, D.; Song, X.; Guo, Y .;
+and Wang, J. 2023. A federated feature selection algorithm
+based on particle swarm optimization under privacy protec-
+tion. Knowledge-Based Systems, 260: 110122.
+Hu, Y .; Zhang, Y .; Gong, D.; and Sun, X. 2022. Multi-
+participant federated feature selection algorithm with par-
+ticle swarm optimization for imbalanced data under privacy
+protection. IEEE Transactions on Artificial Intelligence.
+Huang, W.; and Wu, X. 2024. Robustly Improving Bandit
+Algorithms with Confounded and Selection Biased Offline
+Data: A Causal Approach. In Proceedings of the AAAI Con-
+ference on Artificial Intelligence, 18, 20438–20446.
+Kairouz, P .; McMahan, H. B.; Avent, B.; Bellet, A.; Bennis,
+M.; Bhagoji, A. N.; Bonawitz, K.; Charles, Z.; Cormode, G.;
+Cummings, R.; et al. 2021. Advances and open problems
+in federated learning. F oundations and trends® in machine
+learning, 14(1–2): 1–210.
+Khaire, U. M.; and Dhanalakshmi, R. 2022. Stability of
+feature selection algorithm: A review. Journal of King
+Saud University-Computer and Information Sciences, 34(4):
+1060–1073.
+Kuang, K.; Cui, P .; Athey, S.; Xiong, R.; and Li, B. 2018.
+Stable prediction across unknown environments. In Pro-
+ceedings of the 24th ACM SIGKDD International Confer-
+ence on Knowledge Discovery & Data Mining, 1617–1626.
+Kuang, K.; Cui, P .; Li, B.; Jiang, M.; and Y ang, S. 2017.
+Estimating treatment effect in the wild via differentiated
+confounder balancing. In Proceedings of the 23rd ACM
+SIGKDD International Conference on Knowledge Discov-
+ery and Data Mining, 265–274.
+Kuang, K.; Wang, H.; Liu, Y .; Xiong, R.; Wu, R.; Lu, W.;
+Zhuang, Y .; Wu, F.; Cui, P .; and Li, B. 2023. Stable Predic-
+tion With Leveraging Seed V ariable.IEEE Transactions on
+Knowledge and Data Engineering, 35(6): 6392–6404.
+Li, Z.; Wu, X.; Pan, W.; Ding, Y .; Wu, Z.; Tan, S.; Xu,
+Q.; Y ang, Q.; and Ming, Z. 2024. FedCORE: Federated
+Learning for Cross-Organization Recommendation Ecosys-
+tem. IEEE Transactions on Knowledge and Data Engineer-
+ing, 36(8): 3817–3831.
+Ren, C.; Y u, H.; Peng, H.; Tang, X.; Li, A.; Gao, Y .; Tan,
+A. Z.; Zhao, B.; Li, X.; Li, Z.; et al. 2024. Advances and
+open challenges in federated learning with foundation mod-
+els. arXiv preprint arXiv:2404.15381.
+Rubin, D. B. 1973. Matching to remove bias in observational
+studies. Biometrics, 159–183.
+Shi, C.; Blei, D.; and V eitch, V . 2019. Adapting neural net-
+works for the estimation of treatment effects. Advances in
+Neural Information Processing Systems, 32.
+16985
+Sun, B.; Huo, H.; Y ang, Y .; and Bai, B. 2021. Partialfed:
+Cross-domain personalized federated learning via partial
+initialization. Advances in Neural Information Processing
+Systems, 34: 23309–23320.
+Wang, J.; Feng, W.; Chen, Y .; Y u, H.; Huang, M.; and Y u,
+P . S. 2018. Visual domain adaptation with manifold embed-
+ded distribution alignment. In Proceedings of the 26th ACM
+international conference on Multimedia, 402–410.
+Xiao, L.; Wu, X.; Xu, J.; Li, W.; Jin, C.; and He, L. 2024. At-
+lantis: Aesthetic-oriented multiple granularities fusion net-
+work for joint multimodal aspect-based sentiment analysis.
+Information Fusion, 106: 102304.
+Xiao, L.; Zhou, E.; Wu, X.; Y ang, S.; Ma, T.; and He, L.
+2022. Adaptive multi-feature extraction graph convolutional
+networks for multimodal target sentiment analysis. In 2022
+IEEE International Conference on Multimedia and Expo, 1–
+6. IEEE.
+Y ang, Q.; Fan, L.; and Y u, H. 2020. Federated learning:
+Privacy and incentive, volume 12500. Springer Nature.
+Y ang, Q.; Liu, Y .; Chen, T.; and Tong, Y . 2019. Federated
+machine learning: Concept and applications. ACM Transac-
+tions on Intelligent Systems and Technology, 10(2): 1–19.
+Y ang, S.; Guo, X.; Y u, K.; Huang, X.; Jiang, T.; He, J.; and
+Gu, L. 2023. Causal feature selection in the presence of sam-
+ple selection bias. ACM Transactions on Intelligent Systems
+and Technology, 14(5): 1–18.
+Y ao, L.; Chu, Z.; Li, S.; Li, Y .; Gao, J.; and Zhang, A. 2021.
+A survey on causal inference. ACM Transactions on Knowl-
+edge Discovery from Data (TKDD), 15(5): 1–46.
+Y uan, H.; Morningstar, W. R.; Ning, L.; and Singhal, K.
+2022. What Do We Mean by Generalization in Federated
+Learning? In International Conference on Learning Repre-
+sentations.
+Zhang, X.; Mavromatis, A.; V afeas, A.; Nejabati, R.; and
+Simeonidou, D. 2023. Federated feature selection for hori-
+zontal federated learning in IoT networks. IEEE Internet of
+Things Journal, 10(11): 10095–10112.
+16986

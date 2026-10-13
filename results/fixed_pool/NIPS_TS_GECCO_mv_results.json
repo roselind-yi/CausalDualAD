@@ -1,0 +1,56 @@
+{
+  "dataset": "NIPS_TS_GECCO",
+  "n_features": 9,
+  "aggregate": "max",
+  "pool": "max",
+  "assign_mode": "full",
+  "metrics": {
+    "top_1": 1.0,
+    "top_3": 1.0,
+    "top_5": 1.0,
+    "auroc": 0.6267999317239382,
+    "vus_roc": 0.6267999317239382,
+    "vus_pr": 0.08534314642376001,
+    "f1": 0.1911357340720221,
+    "precision": 0.1725,
+    "recall": 0.21428571428571427,
+    "threshold": 3.647534924953738,
+    "method": "oracle_threshold_search"
+  },
+  "train_losses": [
+    0.49676974094103254,
+    0.24173587726222145,
+    0.21216810884929838,
+    0.20425550651455682,
+    0.19845238753727504
+  ],
+  "config": {
+    "model_params": {
+      "window_size": 64,
+      "hidden_dim": 128,
+      "freq_components": 16,
+      "temperature": 0.1,
+      "lambda1": 0.1,
+      "lambda2": 0.01,
+      "num_heads": 4,
+      "num_layers": 3,
+      "use_fixed_weights": false,
+      "n_features": 9,
+      "freq_feature_dim": 64,
+      "aggregate": "max",
+      "aggregate_topk": 3
+    },
+    "train_params": {
+      "epochs": 5,
+      "batch_size": 128,
+      "learning_rate": 0.0005,
+      "patience": 10,
+      "weight_decay": 1e-05,
+      "max_grad_norm": 0.5
+    },
+    "detect_params": {
+      "stride": 1,
+      "batch_size": 256
+    }
+  }
+}

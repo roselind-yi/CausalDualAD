@@ -1,0 +1,1077 @@
+FedCSL: A Scalable and Accurate Approach to Federated Causal Structure
+Learning
+Xianjie Guo1, Kui Yu1*, Lin Liu2, Jiuyong Li2
+1School of Computer Science and Information Engineering, Hefei University of Technology, Hefei, China
+2UniSA STEM, University of South Australia, Adelaide, Australia
+xianjieguo@mail.hfut.edu.cn, yukui@hfut.edu.cn, {lin.liu, jiuyong.li}@unisa.edu.au
+Abstract
+As an emerging research direction, federated causal structure
+learning (CSL) aims at learning causal relationships from de-
+centralized data across multiple clients while preserving data
+privacy. Existing federated CSL algorithms suffer from scal-
+ability and accuracy issues, since they require computation-
+ally expensive CSL algorithms to be executed at each client.
+Furthermore, in real-world scenarios, the number of samples
+held by each client varies significantly, and existing methods
+still assign equal weights to the learned structural informa-
+tion from each client, which severely harms the learning ac-
+curacy of those methods. To address these two limitations, we
+propose FedCSL, a scalable and accurate method for feder-
+ated CSL. Specifically, FedCSL consists of two novel strate-
+gies: (1) a federated local-to-global learning strategy that en-
+ables FedCSL to scale to high-dimensional data for tackling
+the scalability issue, and (2) a novel weighted aggregation
+strategy that does not rely on any complex encryption tech-
+niques while preserving data privacy for tackling the accuracy
+issue. Extensive experiments on benchmark datasets, high-
+dimensional synthetic datasets and a real-world dataset ver-
+ify the efficacy of the proposed FedCSL method. The source
+code is available at https://github.com/Xianjie-Guo/FedCSL.
+Introduction
+Causal structure learning (CSL) is a primary approach to un-
+cover causal relationships among variables (Lampinen et al.
+2022), and it has been widely applied in various fields in-
+cluding social science (Hedstr¨om and Ylikoski 2010), artifi-
+cial intelligence (Glymour, Scheines, and Spirtes 2014; Wu
+et al. 2023a), and systems biology (Lagani et al. 2016).
+Related Work During the last decades, many CSL meth-
+ods have been proposed (V owels, Camgoz, and Bow-
+den 2022), which can be broadly categorized into two
+classes: combinatorial optimization-based and continuous
+optimization-based methods. Methods in the former, such
+as PC (Spirtes et al. 2000), GES (Chickering 2002) and
+A* (Y uan, Malone, and Wu 2011), heuristically evaluate
+the goodness-of-fit between the structural combinations over
+variables and the dataset used to learn the optimal causal
+structure. In contrast, methods in the latter class, such as
+*Corresponding Author
+Copyright © 2024, Association for the Advancement of Artificial
+Intelligence (www.aaai.org). All rights reserved.
+NOTEARS (Zheng et al. 2018) and DAG-GNN (Y u et al.
+2019), utilize gradient descent to optimize a weight adja-
+cency matrix to fit causal relationships among variables, pro-
+viding a new research approach for causal structure learning.
+In practice, the performance of a learning algorithm is
+largely attributed to the number of available samples. To
+improve the learning performance, users often try to collect
+data from multiple decentralized sources and aggregate them
+into a large-scale dataset. However, due to concerns about
+data privacy, data owners are increasingly reluctant to share
+their local data with others (Y ang et al. 2019). To address
+this issue, federated learning (FL) has emerged as a novel
+learning paradigm that trains a model from locally stored
+data while preserving privacy (McMahan et al. 2017).
+Although there has been significant research in the field of
+FL (Zhang et al. 2023; Y u et al. 2023), the problem of causal
+structure learning in the FL setting has received limited at-
+tentions so far. Some notable work in this area includes
+NOTEARS-ADMM (Ng and Zhang 2022), FedDAG (Gao
+et al. 2023) and FedPC (Huang et al. 2023a). Specifically,
+NOTEARS-ADMM directly applies the distributed opti-
+mization algorithm ADMM (Boyd et al. 2011) to optimize
+the NOTEARS method. FedDAG adopts a two-level struc-
+ture for each local model, where the first level learns causal
+structure by communicating with the server, and the second
+level approximates variable relationships on each local data
+for handling data heterogeneity. FedPC proposes a layer-
+wise aggregation strategy for seamless integration of the PC
+algorithm into the federated learning paradigm, which has
+achieved promising performance on multiple types of data.
+Challenges Existing federated CSL algorithms, however,
+face the following two main challenges.
+Challenge 1: Scalability issue. Learning a global causal
+structure from a single data source is a computationally ex-
+pensive task and is proven to be an NP-hard problem (Chick-
+ering, Heckerman, and Meek 2004). Often complex opti-
+mization methods or sophisticated neural network models
+are required for achieving satisfactory performance (Y u et al.
+2019). Existing federated CSL algorithms primarily rely on
+global learning strategies, leading to significant computa-
+tional challenges for these algorithms to deal with high-
+dimensional data across multiple clients (data sources).
+Challenge 2: Accuracy issue. In real-world scenarios, the
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12235
+2 4 6 8 10 12
+Number of clients
+0.4
+0.5
+0.6
+0.7
+0.8F1 score ( )
+Even sample allocation
+Uneven sample allocation
+(a) Child Bayesian network
+2 4 6 8 10 12
+Number of clients
+0.50
+0.55
+0.60
+0.65
+0.70F1 score ( )
+Even sample allocation
+Uneven sample allocation (b) Insurance Bayesian network
+Figure 1: Results of even and uneven sample allocations on
+the different numbers of clients.
+data volume of each client is often different (called uneven
+sample allocation). In such cases, the quality of the learned
+structures varies across different clients and is typically pos-
+itively correlated with sample size at clients. However, exist-
+ing methods assign an equal weight to each client when ag-
+gregating the structures learned from different clients, lead-
+ing to unsatisfactory performance. To illustrate the issue, we
+conduct experiments on two benchmark Bayesian network
+(BN) datasets, Child and Insurance (Tsamardinos, Brown,
+and Aliferis 2006), using a state-of-the-art federated CSL
+algorithm FedPC (Huang et al. 2023a). By keeping the total
+sample size unchanged, we allocate samples to each client
+in even and uneven ways, respectively. The experimental re-
+sults in Fig. 1 clearly indicate that by assigning an equal
+weight to each client, the performance in the uneven sample
+allocation setting is significantly worse than that in the even
+sample allocation setting. To alleviate this issue, a feasible
+strategy is to assign different weights to clients based on the
+sample sizes held by them (Ma et al. 2022). However, the
+sample size information of each client is often private and
+not known to the server (Kairouz et al. 2021). For example,
+in a FL system for financial institutions, preserving sample
+size privacy ensures that the exact number of transactions
+or customer accounts held by each institution remains confi-
+dential. Thus, without using complex encryption techniques,
+the task of designing a weighted aggregation strategy be-
+comes a significant challenge when the sample sizes held by
+different clients are unknown.
+Contributions In this paper, we propose a novel federated
+CSL method, called FedCSL, to tackle the two challenges
+above and make the following main contributions.
+• To address Challenge 1, we design a federated local-
+to-global learning strategy (instead of global learning
+strategy adopted by exiting methods), which consists of
+three steps: federated causal neighbor learning, feder-
+ated global skeleton construction, and federated skeleton
+orientation. This strategy enables the FedCSL algorithm
+to scale to high-dimensional data.
+• To address Challenge 2, we design a novel strategy to cal-
+culate the weights of different clients in scenarios with
+uneven sample allocation. This strategy preserves data
+privacy without relying on encryption techniques, and
+can infer the relative sample sizes held by each client for
+computing the weights of different clients. Based on this
+strategy, at each step of the local-to-global learning pro-
+cess, FedCSL performs weighted aggregation of learned
+structures by clients using different weights.
+• We conduct comprehensive experiments on benchmark
+BN datasets, high-dimensional synthetic datasets, and
+real dataset to evaluate the performance of FedCSL.
+Notations and Assumptions
+Let X = {X1, X2, ..., Xd} be a set of d variables under
+consideration, C = {c1, c2, ..., cm} be a set of m different
+clients, and Dck ∈ Rnck ×d represent the local dataset owned
+by client ck, and nck is the number of samples inDck , where
+k ∈ {1,2, ..., m}.
+A causal structure over X is often represented using a
+causal directed acyclic graph (DAG) (Huang et al. 2023b).
+In a causal DAG, if there is a direct edge Xi → Xj (i, j∈
+{1, 2, ..., d}),Xi is a direct cause (parent) of Xj, and Xj
+is a direct effect (child) of Xi (Wu et al. 2022). In this pa-
+per, if there is Xi → Xj or Xj → Xi, we say Xi and Xj
+are causal neighbors to each other. Moreover, when Xi and
+Xj are causal neighbors, Xi ̸⊥ ⊥Xj|Xz always holds, where
+Xz ⊆ X \ {Xi, Xj} and we use ̸⊥ ⊥(or ⊥ ⊥) to represent
+the dependence (or independence) relation. In this paper, we
+use the G2 test (Spirtes et al. 2000), which is an alternative
+to the χ2 test, to conduct conditional independence (CI) tests
+between variables. Assume that ρ is the p-value returned by
+the G2 test and α is a given significance level. Under the null
+hypothesis of “H0 : Xi ⊥ ⊥Xj|Xz”, for a CI test of Xi and
+Xj given Xz, Xi ⊥ ⊥Xj|Xz holds if and only if ρ > α.
+In this work, we consider a horizontal federated learning
+setting, and different clients share the same feature space but
+have different sample space. Furthermore, we assume that
+all local datasets DC = {Dc1 , Dc2 , ...,Dcm } are uniformly
+sampled from the same causal DAG G.
+Federated causal structure learning aims to identify a
+causal DAG G from DC in a privacy-preserving way. Con-
+sidering the practical application scenarios, throughout this
+paper, nck1 ̸= nck2 if k1 ̸= k2 for ∀k1, k2 ∈ {1,2, ..., m}(i.e., clients have different data sample sizes), and Dck1 (or
+Dck2 ) can be high-dimensional. Given a local dataset Dck
+held by client ck, based on the law of large numbers, the
+results of CI tests conducted on Dck will approximate the
+ground truth infinitely as the sample size in Dck approaches
+towards infinity. Thus, we make the following assumption.
+Assumption 1.Given any two local datasetsDck1 and Dck2
+for ∀k1, k2 ∈ {1,2, ..., m}, ifnck2 > nck1 , the reliability ofCI tests performed on Dck2 is higher than that of CI tests
+performed on Dck1 .
+Method
+As shown in Fig. 2, the proposed FedCSL consists of three
+steps: federated causal neighbor learning, federated global
+skeleton construction and federated skeleton orientation.
+Federated Causal Neighbor Learning
+Step 1-1: Learning the Potential Causal Neighbors of
+Each Variable Independently. At each client, we first
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12236
+Client c1
+Client ck
+Client cm
+send
+Server
+weighted 
+aggregation
+Number
+1
+2
+Score
+*|| iCN
+Variable
+X1
+X2
+Score
+*
+iCN
+Step 1: federated causal neighbor learning
+asymmetric edges corrected edges
+1cw
+1cw
+kcw
+kcw
+mcw
+mcw
+Step 2: federated global skeleton construction
+Server
+A1
+Ak
+Am
+orient
+send
+weighted 
+aggregation
+Client 1
+Client k
+Client m
+
+Step 3: federated skeleton orientation
+1
+( ,:) ( , )
+m
+k
+AES AES k
+=
+=
+1cw
+1cw
+kcw
+mcw
+weight 
+calculation
+causal neighbors
+max
+top
+？
+？
+orient
+orient
+send
+1cw
+1cw
+kcw
+kcw
+mcw
+mcw
+
+
+Figure 2: The framework of FedCSL, which consists of three steps.
+employ a well-established local causal structure learning al-
+gorithm, HITON-PC (Aliferis et al. 2010), which utilizes CI
+tests, to learn the potential causal neighbors of each variable.
+That is, for client ck, in this step, we obtain the causal neigh-
+bor sets of all variables, i.e. CN ck = {CN cki }i∈{1,2,...,d} =
+{CN ck1 , CNck2 , ..., CNckd }. Learning a set of causal neigh-bors for each variable rather than a global structure over all
+variables makes FedCSL scalable to high-dimensional data,
+since the search space for global structure learning grows ex-
+ponentially with d; whereas the search space of local struc-
+ture learning grows exponentially with the number of causal
+neighbors of the target variable but linearly with d.
+For this step, any state-of-the-art local causal structure
+learning algorithm (Wu et al. 2019, 2020, 2023b,c; Guo et al.
+2022c,b; Y ang et al. 2023; Y u et al. 2020) can be utilized.
+Step 1-2: Calculating the Weights of Different Clients.
+According to Assumption 1, we can infer that the larger the
+sample size held by a client, the more reliable the results of
+the CI tests performed at that client. Therefore, we need to
+assign higher weights to the causal structures learned from
+the clients with larger sample sizes. However, due to high
+data privacy protection, clients often are unwilling to dis-
+close the sizes of the samples they hold. In this case, to indi-
+rectly infer the relative sample sizes of each client, we first
+propose Theorems 1 and 2 to establish the relationship be-
+tween p-values of the CI tests and sample sizes. The proofs
+of Theorems 1 and 2 are given in Appendix A.
+Theorem 1.Let ρ be the p-value obtained by conductingG2
+test to determine whether two variables Xi and Xj are con-
+ditionally independent given an empty set, using a dataset
+Dck . If Xi ⊥ ⊥Xj|∅ holds true in the underlying causal
+structure behind Dck , ρ → 1− when nck → ∞.
+Theorem 2. If Xi ̸⊥ ⊥Xj|∅ holds true in the underlying
+causal structure behind Dck , ρ → 0+ when nck → ∞.
+Given a dataset Dck , for a CI test of Xi and Xj given an
+empty set, Theorem 1 implies that if the null hypothesis of
+“H0 : Xi ⊥ ⊥Xj|∅” is accepted, i.e., α < ρ≤ 1, then a
+larger ρ could indicate a larger nck . In contrast, Theorem 2
+states that if the null hypothesis of “H 0 : Xi ⊥ ⊥Xj|∅” is
+rejected, i.e., 0 ≤ ρ ≤ α, then a larger ρ could indicate
+a smaller nck . Thus, based on Theorems 1 and 2, we have
+the following hypothesis. We have experimentally validated
+Hypothesis 1 in the experimental section.
+Hypothesis 1. Let ρ
+ck1
+ij and ρ
+ck2
+ij be the p-values obtained
+by conducting G2 tests to determine whether Xi ⊥ ⊥Xj|∅
+holds, using two local datasets Dck1 and Dck2 , respec-
+tively. If Xi ⊥ ⊥Xj|∅ holds true on both Dck1 and Dck2
+(i.e. ρ
+ck1
+ij , ρ
+ck2
+ij ∈ (α, 1]), nck2 ≥ nck1 if ρ
+ck2
+ij ≥ ρ
+ck1
+ij ;
+if Xi ̸⊥ ⊥Xj|∅ holds true on both Dck1 and Dck2 (i.e.
+ρ
+ck1
+ij , ρ
+ck2
+ij ∈ [0, α]), nck2 ≤ nck1 if ρ
+ck2
+ij ≥ ρ
+ck1
+ij .
+According to Hypothesis 1, without the use of complex
+encryption techniques, we design a novel strategy to cal-
+culate the weights of different clients without knowing the
+actual sample sizes of each client, thus highly preserving
+data privacy. In Step 1-1, we have obtained the p-values re-
+turned by conducting CI tests between every pair of vari-
+ables given an empty set. To facilitate the calculation of the
+weight values of different clients, we need to uniformly scale
+the p-values in [0, α] and ( α, 1] to the interval [0, 1] us-
+ing the following two rules. At client ck, for each p-value
+ρckij (i, j∈ {1,2, ..., d}and i < j) obtained by conduct-
+ing CI tests between Xi and Xj conditioning on an empty
+set, if ρckij ∈ (α, 1], we proportionally scale up ρckij to the
+[0, 1] interval, since the p-values in (α , 1] are directly pro-
+portional to the sample size, as indicated by Hypothesis 1.
+If ρckij ∈ [0, α], we first proportionally scale up ρckij to the
+[0, 1] interval, and then apply a central symmetric flip to the
+values within this interval. This is because, as indicated by
+Hypothesis 1, p-values in [0,α] are inversely proportional to
+the sample size. Here, we denote the transformed ρckij in the
+two rules mentioned above as ˆρckij . Thus, we have:
+ˆρckij =
+
+
+
+α−ρ
+ck
+ij
+α if ρckij ∈ [0, α]
+ρ
+ck
+ij −α
+1−α if ρckij ∈ (α, 1] (1)
+Finally, we calculate the average of all the values in
+{ˆρckij }i,j∈{1,2,...,d},i<j, denoted as wck , and use it as the
+weight for client ck. That is,
+wck = 1d(d−1)
+2
+dX
+i=1
+dX
+j=i+1
+ˆρckij . (2)
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12237
+By following this procedure, we can compute the weights for
+all clients, wC = {wck }k∈{1,2,...,m} = {wc1 , wc2 , ..., wcm },
+and the higher the weight of a client, the larger the size of the
+samples the client has. Note that the total number of CI tests
+performed on different clients may vary, but the total num-
+ber of CI tests between any two variables under the empty
+set condition is always the same (i.e., d(d − 1)/2 CI tests).
+Therefore, to ensure fairness, we only utilize the p-values
+returned from the CI tests given an empty set to estimate the
+weights of different clients.
+Step 1-3: Calculating the Optimal Number of Causal
+Neighbors for Each Variable. In Step 1-1, the learned
+causal neighbor set of each variable may vary across dif-
+ferent clients, so it is necessary to first compute the opti-
+mal number of causal neighbors for each variable. Specif-
+ically, for Xi, we first send the client weights wC and
+the causal neighbor sets of Xi obtained at all clients
+{CN cki }k∈{1,2,...,m} to the server. Let |CN cki | represent the
+number of causal neighbors for Xi learned at client ck. To
+facilitate weighted aggregation, we utilize a mask matrix
+Ψi ∈ Rm×maxmk=1(|CN cki |) to record the number of causal
+neighbors for Xi obtained across m clients as follows.
+Ψi(k, ξ)
+k=1,2,...,m
+ξ=1,2,...,maxmk=1(|CN cki |)
+=
+
+1 if ξ= |CN cki |
+0 otherwise , (3)
+where maxmk=1(|CN cki |) denotes the maximum number of
+causal neighbors for Xi learned across all clients, and ξ rep-
+resents an indicator variable for the number of causal neigh-
+bors (ξ ∈ {1,2, ...,maxmk=1(|CN cki |)}). Eq. (3) denotes that
+if the number of causal neighbors for Xi learned at client ck
+is ξ, Ψi(k, ξ) = 1; otherwise, Ψi(k, ξ) = 0.
+At the server side, for each ξ, we add up the weights of
+the clients on which the number of causal neighbors for
+Xi learned is equal to ξ (as shown in Fig. 2). Then we
+choose the number of causal neighbors that corresponds to
+the maximum sum of weights as the best estimate for the op-
+timal number of causal neighbors forXi, denoted as |CN ∗i |.
+Eq. (4) below summarize the above described operation.
+|CN ∗i | =
+ ˚M ax([wc1 , wc2 , ..., wcm ]Ψi) if ∥ Ψi ∥1̸= 0
+0 otherwise ,
+(4)
+where ˚M ax(·)is utilized to select the index value corre-
+sponding to the maximum value in a vector, and ∥ Ψi ∥1
+denotes the calculation of the L1 norm of matrix Ψi to de-
+termine if Ψi is a zero matrix. Finally, we obtain the optimal
+number of federally learned causal neighbors of each vari-
+able over all clients, i.e., {|CN ∗i |}i∈{1,2,...,d}.
+Step 1-4: Determining the Optimal Causal Neighbors
+of Each Variable. According to the optimal number of
+causal neighbors for each variable obtained in Step 1-3, this
+step aims to federally learn an optimal set of causal neigh-
+bors for each variable across all clients. Specifically, forXi,
+its potential causal neighbor sets learned at all clients are
+recorded in a mask matrix Bi ∈ Rm×d as follows.
+Bi(k, j)
+k=1,2,...,m;j=1,2,...,d
+=
+
+1 if Xj ∈ CN cki
+0 otherwise , (5)
+where if Xj is a causal neighbor of Xi at client ck, then
+Bi(k, j) = 1; otherwise, Bi(k, j) = 0.
+After obtaining all potential causal neighbors of Xi in
+Step 1-1, for each potential causal neighbor Xj of Xi, we
+check if Xj is learned at clientck as a potential causal neigh-
+bor of Xi. If it is, the score ofXj is increased by wck ; other-
+wise, its score remains unchanged (as shown in Fig. 2). This
+process is repeated for all clients to obtain the final score
+of Xj (as a potential neighbor of Xi). Finally, the scores
+of all potential causal neighbors of Xi are sorted, and the
+top |CN ∗i | potential causal neighbors of Xi are selected as
+the federally learned optimal set of causal neighbors for Xi
+across all clients, denoted as CN ∗i . Therefore, we have:
+CN ∗i = ˚T op|CN ∗i |([wc1 , wc2 , ..., wcm ]Bi), (6)
+where ˚T op|CN ∗i | is used to obtain the variable index corre-
+sponding to the top |CN ∗i | elements in a vector based on
+their score order.
+Federated Global Skeleton Construction
+In this step, we utilize the learned optimal causal neighbor
+sets for all variables in Step 1-4, i.e., {CN ∗i }i∈{1,2,...,d},
+to construct a global skeleton. Given any two variables Xi
+and Xj, if there is an edge connecting Xi and Xj in the
+true causal structure, Xi and Xj must be each other’s causal
+neighbors; otherwise, they are not causal neighbors of each
+other. Thus, if Xi ∈ CN ∗j and Xj ∈ CN ∗i , we connect
+Xi and Xj with an undirected edge; if Xi /∈ CN ∗j and
+Xj /∈ CN ∗i , we consider that there is no edge between Xi
+and Xj. However, as shown in Fig. 2, we may also encounter
+the case that Xi ∈ CN ∗j but Xj /∈ CN ∗i (or Xi /∈ CN ∗j but
+Xj ∈ CN ∗i ). In this case, we say that there is an asymmet-
+ric edge between Xi and Xj, denoted as Xi ↮ Xj. How to
+tackle these asymmetric edges in a federated setting?
+To deal with this issue, we first utilize {CN ∗i }i∈{1,2,...,d}
+obtained in Step 1-4 to construct an initial global skeleton
+that may contain some asymmetric edges. Then we design a
+weighted scoring strategy to determine whether each asym-
+metric edge should be preserved as an undirected edge in
+the initial global skeleton or removed from it. We assign a
+score to each asymmetric edge as follows. For an asymmet-
+ric edge Xi ↮ Xj, if the learned causal neighbor results
+at client ck indicate that Xi is a causal neighbor of Xj and
+Xj is also a causal neighbor of Xi, we let the score of this
+edge be [(1 + 1) ∗ wck )]. If it is determined that Xi is not
+a causal neighbor of Xj and Xj is also not a causal neigh-
+bor of Xi, we set the score of this edge to [(−1 − 1) ∗ wck ].
+In all other cases, i.e., Xi ∈ CN ckj but Xj /∈ CN cki (or
+Xi /∈ CN ckj but Xj ∈ CN cki ), we set the score of this edge
+to [(−1 + 1) ∗ wck ] = 0. The score of the γ-th asymmetric
+edge at client ck is denoted as AES (γ, k), and we have:
+AES (γ, k) =
+
+
+
+(1 + 1)∗ wck if Xi ∈ CN
+ck
+j ∧ Xj ∈ CN
+ck
+i
+(−1 − 1) ∗ wck if Xi /∈ CN
+ck
+j ∧ Xj /∈ CN
+ck
+i
+(−1 + 1)∗ wck if Xi ∈ CN
+ck
+j ∧ Xj /∈ CN
+ck
+i
+(1 − 1) ∗ wck if Xi /∈ CN
+ck
+j ∧ Xj ∈ CN
+ck
+i .
+(7)
+Then the overall score of the γ-th asymmetric edge consid-
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12238
+ering all clients is
+AES (γ, :) =
+mX
+k=1
+AES (γ, k). (8)
+Finally, if the overall score of the γ-th asymmetric edge is
+greater than 0, then it is retained in the initial global skeleton;
+otherwise, it is removed from the initial global skeleton. We
+denote the final global skeleton as S∗.
+Federated Skeleton Orientation
+As shown in Fig. 2, after having obtained the federally
+learned global skeleton S∗, the next step aims to orient the
+edges in S∗ by a weighted aggregation strategy.
+Specifically, the server first sends S∗ to each client, then
+we use a Bayesian score criteria, BDeu (Scutari 2016), and a
+search procedure, hill-climbing (G ´amez, Mateo, and Puerta
+2011) to greedily orient the undirected edges in S∗ at each
+client to obtain a global causal structure with the highest
+score at each client. Let Gk denote the global causal struc-
+ture learned at client ck and Ak denote the adjacency matrix
+corresponding to Gk, and “Ak(i, j) = 1” denotes that there
+is an edge from Xi to Xj in Gk.
+Subsequently, we sends all adjacency matrices (i.e.,
+A1,A2,...,Am) back to the server to compute the aggregated
+adjacency matrix A∗ as follows.
+A∗ = (A1 ∗ wc1 ) ⊕ (A2 ∗ wc2 ) ⊕ · · · ⊕(Am ∗ wcm ), (9)
+where ⊕ represents the element-wise addition of matrices.
+Finally, we compare the elements at corresponding posi-
+tions on the diagonal of matrix A∗ for obtaining the final
+causal structure (marked as G∗). Specifically, if A∗(i, j) >
+A∗(j, i), then there exists a directed edge from Xi to Xj;
+if A∗(i, j) ≤ A∗(j, i) and A∗(j, i) ̸= 0, then there exists
+a directed edge from Xj to Xi; otherwise, there is no edge
+between Xi and Xj. To summarize, we have
+G∗ ⇐
+( Xi → Xj if A∗(i, j) > A∗(j, i)
+Xi ← Xj if A∗(i, j) ≤ A∗(j, i) ∧ A∗(j, i) ̸= 0
+Xi ⇎ Xj if A∗(i, j) = 0 ∧ A∗(j, i) = 0,
+(10)
+where “Xi ⇎ Xj” denotes that there is no edge connected
+between Xi and Xj.
+Experiments
+Experiment Setting
+Datasets. We utilize the following three types of datasets.
+• Benchmark BN datasets.We use five benchmark BN
+datasets: Child with 20 variables, Insurance with 27 vari-
+ables, Alarm with 37 variables, Pigs with 441 variables
+and Gene with 801 variables, and each dataset contains
+5,000 samples (Tsamardinos, Brown, and Aliferis 2006).
+• High-dimensional synthetic datasets.We first construct
+a causal DAG with 5,000 variables, where the maximum
+number of parents for each variable is 3, and the average
+degree of each variable is 2. Then, based on this causal
+DAG, we use an open-source software package 1 to gen-
+erate three datasets, each containing 5,000 samples.
+• Real-world datasets. We also compare the proposed
+method with the baselines on the Sachs (Sachs et al.
+2005) dataset. Sachs is a benchmark graphical model rep-
+resenting protein signaling networks in human cells. It
+consists of 11 nodes (cell types) and 17 edges. Our exper-
+iments use 7,466 commonly used observational samples.
+In our experiments, the local datasets at different clients
+have different sizes. Let n = Pmk=1 nck be the sum of sam-ple sizes owned by the m clients, the sample size of each
+local dataset is set as follows.
+nc1 = ⌊ n2m ⌋, nck − nck−1 = ⌊ 2(n − mnc1 )m(m − 1) ⌋,
+nck = nc1 + ⌊ 2(n − mnc1 )m(m − 1) ⌋(k − 1), k∈ 2, 3, ..., m. (11)
+Evaluation metrics. We use the Structural Hamming Dis-
+tance (SHD) and F1 score (Guo et al. 2022a) to evaluate the
+discovered causal structures in a federated setting.
+Baselines. We compare FedCSL with five state-of-the-
+art federated CSL methods, including NOTEARS-ADMM,
+NOTEARS-MLP-ADMM (Ng and Zhang 2022), GS-
+FedDAG, AS-FedDAG (Gao et al. 2023) and FedPC (Huang
+et al. 2023a), on the benchmark BN datasets and the real-
+world dataset. In addition, as existing federated CSL meth-
+ods do not scale up to high-dimensional data, we develop the
+following four baselines using an efficient and effective CSL
+method, ADL (Guo et al. 2023), and compare them with our
+method on the high-dimensional synthetic datasets.
+• ADL-AllData. We centralize all clients’ data to a single
+dataset and run the ADL algorithm on it.
+• ADL-Avg. We first run ADL at each client for obtaining
+m causal structures, and then calculate the average value
+of the metrics corresponding to m causal structures.
+• ADL-Best. We first run ADL at each client independently
+to get m causal structures, and then select the causal
+structure with the highest F1 score as the final output.
+• ADL-V oting. We apply a voting method (Na and Y ang
+2010) to the ADL algorithm.
+Results on Benchmark BN Data
+In this section, we report the experimental results of Fed-
+CSL and the baselines on benchmark BN datasets in terms
+of SHD, F1 score and Time (i.e., running time) metrics.
+From Fig. 3, we can observe that regardless of the num-
+ber of clients, FedCSL consistently achieves the lowest
+SHD value and the best F1 score on all datasets, which
+validates the superiority of our method. Especially, Fed-
+CSL achieves significant performance improvement when
+the number of clients reaches 12. This highlights the ef-
+fectiveness of our designed weighted aggregation strategy
+in addressing the challenge of uneven sample allocation in
+the horizontal federated learning scenario, as the number of
+1The code is available at https://www.cs.ubc.ca/ murphyk/Soft-
+ware/DAGlearn/index.html.
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12239
+2 3 5 8 12
+Number of clients
+0
+20
+40
+60SHD ( )
+Child
+2 3 5 8 12
+Number of clients
+50
+100
+Insurance
+2 3 5 8 12
+Number of clients
+0
+50
+100
+Alarm
+2 3 5 8 12
+Number of clients
+0
+200
+400
+600
+Pigs
+2 3 5 8 12
+Number of clients
+0
+500
+1000
+Gene
+2 3 5 8 12
+Number of clients
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0F1 score ( )
+Child
+2 3 5 8 12
+Number of clients
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+ Insurance
+2 3 5 8 12
+Number of clients
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Alarm
+2 3 5 8 12
+Number of clients
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Pigs
+2 3 5 8 12
+Number of clients
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Gene
+NOTEARS-ADMM NOTEARS-MLP-ADMM GS-FedDAG AS-FedDAG FedPC FedCSL (Ours)
+Figure 3: Structure learning results on the benchmark datasets. There are 5,000 samples in total, allocated unevenly across {2,
+3, 5, 8, 12} clients. We show the performance of all methods in two metrics (SHD and F1 score from top to bottom). Note that
+due to insufficient memory, GS-FedDAG and AS-FedDAG are unable to produce results on the Pigs and Gene datasets.
+Method Time (↓)Child Insurance Alarm Pigs Gene
+NT-ADMM 31.9 42.2 57.4 8270.6 14149.4
+NT-M-ADMM 57.2 80.6 121.5 12611.2 44131.0
+GS-FedDAG 3274.6 4322.7 7956.8 OOM OOM
+AS-FedDAG 3052.8 4674.5 7238.4 OOM OOM
+FedPC 2.6 3.7 4.3 3198.5 1069.2
+FedCSL (Ours) 0.7 0.9 1.2 322.6 220.9
+“NT-ADMM” refers to NOTEARS-ADMM.
+“NT-M-ADMM” refers to NOTEARS-MLP-ADMM.
+OOM: OUT OF MEMORY .
+Table 1: Running time (in seconds) of each algorithm on the
+benchmark datasets when the number of clients is set to 12.
+clients increases. Compared with the best baseline FedPC,
+the F1 score of FedCSL is 20%˜42% higher on the Child BN
+dataset. The SHD values achieved by our method are signif-
+icantly smaller than those achieved by NOTEARS-ADMM,
+NOTEARS-MLP-ADMM, GS-FedDAG and AS-FedDAG,
+since it is hard for these four baselines to select a suitable
+threshold to prune false directed edges, the causal structures
+learned by these four baselines often contain a larger number
+of false edges, leading to inaccurate causal structures.
+Table 1 shows the execution time of all methods, and
+we can see that FedCSL is significantly faster than all the
+baselines. Especially, on large-scale datasets (e.g., Pigs and
+Gene), our method is more than 10 times faster than all
+baselines, indicating that the proposed local-to-global strat-
+egy indeed enhances the efficiency of FedCSL. NOTEARS-
+ADMM, NOTEARS-MLP-ADMM, GS-FedDAG and AS-
+FedDAG incur significant computational costs on large-
+scale BN datasets due to the adoption of complex neural
+network models or sophisticated optimization methods.
+Results on High-dimensional Synthetic Data
+Since existing federated causal structure learning methods
+do no scale up to high-dimensional datasets (e.g. with 5,000
+2 3 5 8 12
+Number of clients
+1000
+2000
+3000
+4000SHD ( )
+2 3 5 8 12
+Number of clients
+0.5
+0.6
+0.7
+0.8
+0.9F1 score ( )
+ADL-AllData
+ADL-Avg
+ADL-Best
+ADL-Voting
+FedCSL (Ours)
+Figure 4: Structure learning results on high-dimensional
+synthetic datasets with 5,000 variables.
+variables), we develop the four new algorithms as baselines
+to verify the effectiveness and efficiency of our method.
+From Fig. 4, we can observe that FedCSL outperforms its
+baselines significantly in terms of SHD and F1 score met-
+rics, surpassing even ADL-AllData. Furthermore, as the
+number of clients increases (with a reduced allocation of
+samples per client), the performance of ADL-Avg, ADL-
+Best and ADL-V oting deteriorates noticeably. However, our
+method maintains its ideal performance. This is attributed
+to two factors: on the one hand, during federated global
+skeleton construction, our designed weighted scoring strat-
+egy enhances the accuracy of causal neighbor learning by
+correcting asymmetric edges. On the other hand, our pro-
+posed weighted aggregation strategy helps mitigate the in-
+terference caused by erroneous structure learning results at
+clients with a lower allocation of samples.
+The running times of FedCSL and the baselines on high-
+dimensional datasets are shown Table 2. It is worth noting
+that, except for ADL-AllData, ADL-Avg and ADL-Best are
+also executed on a single dataset, since their execution pro-
+cesses at each client are separated. Even so, we find that
+FedCSL has a minimal difference in runtime compared to
+ADL-AllData, ADL-Avg and ADL-Best. In comparison to
+ADL-V oting, FedCSL exhibits a clear efficiency advantage,
+and as the number of clients increases, the efficiency gap
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12240
+Method Time (↓)2 clients 3 clients 5 clients 8 clients 12 clients
+ADL-AllData 2141.8 2103.7 2122.1 2167.6 2120.5
+ADL-Avg 2176.6 2544.1 3350.6 4888.9 7084.3
+ADL-Best 2014.0 2080.7 2126.0 3105.5 4421.2
+ADL-V oting 5088.8 9272.0 22373.9 42635.8 86896.9
+FedCSL (Ours) 1925.0 2397.8 3368.9 4773.5 6662.8
+Table 2: Running time (in seconds) on the synthetic datasets.
+Method SHD (↓)2 clients 3 clients 5 clients 8 clients 12 clients
+NT-ADMM 32 32 34 32 29
+NT-M-ADMM 21 25 23 32 27
+GS-FedDAG 22 20 19 20 13
+AS-FedDAG 23 20 19 19 12
+FedPC 41 40 40 41 26
+FedCSL (Ours) 12 18 22 15 17
+“NT-ADMM” refers to NOTEARS-ADMM.
+“NT-M-ADMM” refers to NOTEARS-MLP-ADMM.
+Table 3: Results on the real Sachs dataset.
+between FedCSL and ADL-V oting further widens.
+Results on Real-World Data
+The experimental results on the real dataset, Sachs (Sachs
+et al. 2005), are presented in Table 3. From the table, it can
+be observed that FedCSL achieves the lowest SHD value
+when the number of clients is 2, 3, and 8. Although our
+method does not outperform the baselines in terms of per-
+formance when the number of clients is 5 and 12, the dif-
+ference in achieved SHD values is minimal. Since the Sachs
+dataset is relatively small in scale, the execution time of each
+algorithm is negligible, and thus it is not reported in Table 3.
+Ablation Study
+To validate the effectiveness of the proposed weighted ag-
+gregation strategy, we conduct ablation experiments in this
+section. Specifically, we first develop a variant of Fed-
+CSL, denoted as “FedCSL w/o weighting”, which maintains
+equivalent weights for all clients (i.e., wck1 = wck2 holds
+for ∀k1, k2 ∈ {1,2, ..., m}) throughout the learning process.
+Then FedCSL is compared with “FedCSL w/o weighting”
+using five benchmark BN datasets. The results are presented
+in Fig 5. We observe that FedCSL achieves higher F1 scores
+and lower SHD values than “FedCSL w/o weighting” on all
+benchmark BN datasets, demonstrating the effectiveness of
+our designed weighted aggregation strategy in the horizontal
+federated learning setting, especially when dealing with the
+scenario of uneven sample sizes held by different clients.
+Validation of Hypothesis 1
+In this section, we validate Hypothesis 1 by conducting ex-
+periments on the benchmark datasets. Specifically, we first
+generate three datasets using Child BN, each containing 300,
+400, and 500 samples, respectively. Then, we perform causal
+neighbor learning on these datasets and record the p-values
+D1 D2 D3 D4 D50.4
+0.6
+0.8
+1.0F1 score ( )
+D1 D2 D3 D4 D50
+25
+50
+75SHD ( )
+FedCSL (Ours) FedCSL w/o weighting
+Figure 5: Results of ablation experiments. (“D1”, “D2”,
+“D3”, “D4”, and “D5” represent Child, Insurance, Alarm,
+Pigs, and Gene BN datasets, respectively.)
+1 3 5 7 9 11 13 15 17 19
+CI T est Number
+0.0
+0.002
+0.004
+0.006
+0.008
+p-value [0, ]
+1 3 5 7 9 11 13 15 17 19
+CI T est Number
+0.2
+0.4
+0.6
+0.8
+1.0p-value ( , 1]
+300 samples 400 samples 500 samples
+Figure 6: Experimental V erification of Hypothesis 1.
+returned by the CI tests when the condition set is empty. For
+ease of observation, we randomly select 20 CI test results
+with p-values indicating conditional independence and 20 CI
+test results with p-values indicating conditional dependence
+for each dataset. The results are presented in Fig. 6.
+As shown in the left sub-figure of Fig. 6, when two
+variables are conditional dependent (i.e., the p-values is in
+[0, α]), the obtained p-values on datasets with smaller sam-
+ple sizes are consistently higher than those on datasets with
+larger sample sizes. Here, the red points are higher than
+the green points, and the green points are higher than the
+blue points. In contrast, as illustrated in the right sub-figure
+of Fig. 6, when two variables are conditionally indepen-
+dent (i.e., the p-values is in (α, 1]), the obtained p-values
+on datasets with smaller sample sizes are consistently lower
+than those on datasets with larger sample sizes. Here, the red
+points are lower than the green points, and the green points
+are lower than the blue points. Overall, the results presented
+in Fig. 6 perfectly validate the correctness of Hypothesis 1.
+Conclusion
+In this paper, we propose a novel method FedCSL, which
+overcomes the scalability and accuracy issues encountered
+by existing federated CSL algorithms. Specifically, we de-
+sign a federated local-to-global learning strategy that en-
+ables FedCSL to scale to high-dimensional data. Based on
+theoretical analysis, we devise a highly privacy-preserving
+weighted aggregation strategy, which ensures that FedCSL
+achieves high learning accuracy even in scenarios with un-
+even sample allocations. Extensive experiments on various
+types of data demonstrate the accuracy and scalability of our
+method. In future, we plan to extend this work to more gen-
+eralized scenarios, such as the scenarios with data hetero-
+geneity and the presence of latent variables.
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12241
+Acknowledgments
+This work was supported by the National Key Re-
+search and Development Program of China (under grant
+2020AAA0106100), the National Natural Science Founda-
+tion of China (under grant 62376087), and China Scholar-
+ship Council (under grant 202306690023).
+References
+Aliferis, C. F.; Statnikov, A.; Tsamardinos, I.; Mani, S.; and
+Koutsoukos, X. D. 2010. Local causal and Markov blanket
+induction for causal discovery and feature selection for clas-
+sification part I: algorithms and empirical evaluation. Jour-
+nal of Machine Learning Research, 11(1).
+Boyd, S.; Parikh, N.; Chu, E.; Peleato, B.; Eckstein, J.; et al.
+2011. Distributed optimization and statistical learning via
+the alternating direction method of multipliers. F oundations
+and Trends® in Machine learning, 3(1): 1–122.
+Chickering, D. M. 2002. Optimal structure identification
+with greedy search. Journal of Machine Learning Research,
+3(Nov): 507–554.
+Chickering, M.; Heckerman, D.; and Meek, C. 2004. Large-
+sample learning of Bayesian networks is NP-hard. Journal
+of Machine Learning Research, 5: 1287–1330.
+G´amez, J. A.; Mateo, J. L.; and Puerta, J. M. 2011. Learning
+Bayesian networks by hill climbing: efficient methods based
+on progressive restriction of the neighborhood.Data Mining
+and Knowledge Discovery, 22(1): 106–148.
+Gao, E.; Chen, J.; Shen, L.; Liu, T.; Gong, M.; and Bon-
+dell, H. 2023. FedDAG: Federated DAG Structure Learning.
+Transactions on Machine Learning Research.
+Glymour, C.; Scheines, R.; and Spirtes, P . 2014. Discov-
+ering causal structure: Artificial intelligence, philosophy of
+science, and statistical modeling. Academic Press.
+Guo, X.; Wang, Y .; Huang, X.; Y ang, S.; and Y u, K. 2022a.
+Bootstrap-based Causal Structure Learning. In Proceedings
+of the 31st ACM International Conference on Information &
+Knowledge Management, 656–665.
+Guo, X.; Y u, K.; Cao, F.; Li, P .; and Wang, H. 2022b. Error-
+aware Markov blanket learning for causal feature selection.
+Information Sciences, 589: 849–877.
+Guo, X.; Y u, K.; Liu, L.; Cao, F.; and Li, J. 2022c. Causal
+feature selection with dual correction. IEEE Transactions
+on Neural Networks and Learning Systems.
+Guo, X.; Y u, K.; Liu, L.; Li, P .; and Li, J. 2023. Adaptive
+Skeleton Construction for Accurate DAG Learning. IEEE
+Transactions on Knowledge and Data Engineering, 35(10):
+10526–10539.
+Hedstr¨om, P .; and Ylikoski, P . 2010. Causal mechanisms in
+the social sciences. Annual Review of Sociology, 36: 49–67.
+Huang, J.; Guo, X.; Y u, K.; Cao, F.; and Liang, J. 2023a.
+Towards Privacy-Aware Causal Structure Learning in Fed-
+erated Setting. IEEE Transactions on Big Data, 9(6): 1525–
+1535.
+Huang, X.; Guo, X.; Li, Y .; and Y u, K. 2023b. A novel
+data enhancement approach to DAG learning with small data
+samples. Applied Intelligence, 53(22): 27589–27607.
+Kairouz, P .; McMahan, H. B.; Avent, B.; Bellet, A.; Bennis,
+M.; Bhagoji, A. N.; Bonawitz, K.; Charles, Z.; Cormode, G.;
+Cummings, R.; et al. 2021. Advances and open problems in
+federated learning. F oundations and Trends® in Machine
+Learning, 14(1–2): 1–210.
+Lagani, V .; Triantafillou, S.; Ball, G.; Tegn ´er, J.; and
+Tsamardinos, I. 2016. Probabilistic computational causal
+discovery for systems biology. Uncertainty in Biology: A
+Computational Modeling Approach, 33–73.
+Lampinen, A. K.; Roy, N.; Dasgupta, I.; Chan, S. C.; Tam,
+A.; Mcclelland, J.; Y an, C.; Santoro, A.; Rabinowitz, N. C.;
+Wang, J.; et al. 2022. Tell me why! Explanations support
+learning relational and causal structure. In International
+Conference on Machine Learning, 11868–11890. PMLR.
+Ma, X.; Zhang, J.; Guo, S.; and Xu, W. 2022. Layer-wised
+model aggregation for personalized federated learning. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, 10092–10101.
+McMahan, B.; Moore, E.; Ramage, D.; Hampson, S.; and
+y Arcas, B. A. 2017. Communication-efficient learning of
+deep networks from decentralized data. In Artificial intelli-
+gence and statistics, 1273–1282. PMLR.
+Na, Y .; and Y ang, J. 2010. Distributed Bayesian network
+structure learning. In 2010 IEEE International Symposium
+on Industrial Electronics, 1607–1611. IEEE.
+Ng, I.; and Zhang, K. 2022. Towards federated bayesian net-
+work structure learning with continuous optimization. In In-
+ternational Conference on Artificial Intelligence and Statis-
+tics, 8095–8111. PMLR.
+Sachs, K.; Perez, O.; Pe’er, D.; Lauffenburger, D. A.; and
+Nolan, G. P . 2005. Causal protein-signaling networks
+derived from multiparameter single-cell data. Science,
+308(5721): 523–529.
+Scutari, M. 2016. An empirical-Bayes score for discrete
+Bayesian networks. In Conference on Probabilistic Graphi-
+cal Models, 438–448. PMLR.
+Spirtes, P .; Glymour, C. N.; Scheines, R.; and Heckerman,
+D. 2000. Causation, prediction, and search. MIT Press.
+Tsamardinos, I.; Brown, L. E.; and Aliferis, C. F. 2006. The
+max-min hill-climbing Bayesian network structure learning
+algorithm. Machine learning, 65: 31–78.
+V owels, M. J.; Camgoz, N. C.; and Bowden, R. 2022. D’ya
+like DAGs? a survey on structure learning and causal dis-
+covery. ACM Computing Surveys, 55(4): 1–36.
+Wu, L.; Zhao, H.; Li, Z.; Huang, Z.; Liu, Q.; and Chen, E.
+2023a. Learning the Explainable Semantic Relations via
+Unified Graph Topic-Disentangled Neural Networks. ACM
+Transactions on Knowledge Discovery from Data, 17(8): 1–
+23.
+Wu, X.; Jiang, B.; Wang, X.; Ban, T.; and Chen, H. 2023b.
+Feature Selection in the Data Stream Based on Incremental
+Markov Boundary Learning. IEEE Transactions on Neural
+Networks and Learning Systems.
+Wu, X.; Jiang, B.; Wu, T.; and Chen, H. 2023c. Practi-
+cal Markov boundary learning without strong assumptions.
+In Proceedings of the AAAI Conference on Artificial Intelli-
+gence, volume 37, 10388–10398.
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12242
+Wu, X.; Jiang, B.; Y u, K.; Chen, H.; and Miao, C. 2020.
+Multi-label causal feature selection. In Proceedings of the
+AAAI conference on artificial intelligence, volume 34, 6430–
+6437.
+Wu, X.; Jiang, B.; Y u, K.; Chen, H.; et al. 2019. Accu-
+rate Markov boundary discovery for causal feature selection.
+IEEE Transactions on Cybernetics, 50(12): 4983–4996.
+Wu, X.; Jiang, B.; Zhong, Y .; and Chen, H. 2022. Multi-
+target Markov boundary discovery: Theory, algorithm, and
+application. IEEE Transactions on Pattern Analysis and Ma-
+chine Intelligence, 45(4): 4964–4980.
+Y ang, Q.; Liu, Y .; Chen, T.; and Tong, Y . 2019. Federated
+machine learning: Concept and applications. ACM Transac-
+tions on Intelligent Systems and Technology, 10(2): 1–19.
+Y ang, S.; Guo, X.; Y u, K.; Huang, X.; Jiang, T.; He, J.; and
+Gu, L. 2023. Causal Feature Selection in the Presence of
+Sample Selection Bias. ACM Transactions on Intelligent
+Systems and Technology, 14(5): 78:1–78:18.
+Y u, K.; Guo, X.; Liu, L.; Li, J.; Wang, H.; Ling, Z.; and Wu,
+X. 2020. Causality-based feature selection: Methods and
+evaluations. ACM Computing Surveys, 53(5): 1–36.
+Y u, Y .; Chen, J.; Gao, T.; and Y u, M. 2019. DAG-GNN:
+DAG structure learning with graph neural networks. In In-
+ternational Conference on Machine Learning, 7154–7163.
+PMLR.
+Y u, Y .; Liu, Q.; Wu, L.; Y u, R.; Y u, S. L.; and Zhang, Z.
+2023. Untargeted attack against federated recommendation
+systems via poisonous item embeddings and the defense.
+In Proceedings of the AAAI Conference on Artificial Intel-
+ligence, volume 37, 4854–4863.
+Y uan, C.; Malone, B.; and Wu, X. 2011. Learning opti-
+mal Bayesian networks using A* search. In Proceedings
+of International Joint Conference on Artificial Intelligence ,
+2186–2191.
+Zhang, H.; Luo, F.; Wu, J.; He, X.; and Li, Y . 2023.
+LightFR: Lightweight federated recommendation with
+privacy-preserving matrix factorization. ACM Transactions
+on Information Systems, 41(4): 1–28.
+Zheng, X.; Aragam, B.; Ravikumar, P . K.; and Xing, E. P .
+2018. DAGs with no tears: Continuous optimization for
+structure learning. Advances in Neural Information Process-
+ing Systems, 31.
+The Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence (AAAI-24)
+12243
