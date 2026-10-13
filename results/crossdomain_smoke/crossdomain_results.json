@@ -1,0 +1,49 @@
+{
+  "results": [
+    {
+      "train_on": "SMAP",
+      "test_on": "SMAP",
+      "n_features": 25,
+      "metrics": {
+        "top_1": 0.0,
+        "top_3": 0.0,
+        "top_5": 0.0,
+        "auroc": 0.7137039652910907,
+        "vus_roc": 0.7137039652910907,
+        "vus_pr": 0.04498521915771678,
+        "f1": 0.1171935235158057,
+        "precision": 0.0627062706270627,
+        "recall": 0.8941176470588236,
+        "threshold": 3.8415431084344163,
+        "method": "oracle_threshold_search"
+      },
+      "auroc": 0.7137039652910907
+    }
+  ],
+  "drops": [],
+  "args": {
+    "data_root": "./data",
+    "train_on": null,
+    "test_on": null,
+    "pairs": null,
+    "datasets": [
+      "SMAP",
+      "GECCO"
+    ],
+    "all_pairs": true,
+    "epochs": 2,
+    "batch_size": 128,
+    "window_size": 64,
+    "lr": null,
+    "patience": 10,
+    "align": "first_c",
+    "pool": "max",
+    "assign_mode": "full",
+    "aggregate": null,
+    "max_points": 3000,
+    "start_offset": 3000,
+    "device": null,
+    "save_dir": "results/crossdomain_smoke"
+  },
+  "elapsed_seconds": 191.63385367393494
+}

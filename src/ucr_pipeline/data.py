@@ -152,12 +152,27 @@ def load_mv_dataset(name, data_root):
     """
     key = name.upper()
     data_dir = os.path.join(data_root, key)
-    # 目录名可能与请求名不一致（如 WaDi vs WADI），做一次存在性回退
+    # 目录名可能与请求名不一致（如 WaDi vs WADI），做存在性回退
     if not os.path.isdir(data_dir):
-        for cand in os.listdir(data_root):
+        try:
+            candidates = os.listdir(data_root)
+        except FileNotFoundError:
+            candidates = []
+        for cand in candidates:
+            # 精确匹配（大小写不敏感）
             if cand.upper() == key:
                 data_dir = os.path.join(data_root, cand)
                 break
+            # 允许缩写：NIPS_TS_GECCO 也接受 GECCO
+            if key.endswith("_" + cand.upper()):
+                data_dir = os.path.join(data_root, cand)
+                break
+        else:
+            # 尝试用 _MV_NAME_MAP 的值反查目录（目录名可能不同于请求名）
+            for req, prefix in _MV_NAME_MAP.items():
+                if req == key and os.path.isdir(os.path.join(data_root, prefix)):
+                    data_dir = os.path.join(data_root, prefix)
+                    break
 
     # ---- .npy 路径 ----
     prefix = _MV_NAME_MAP.get(key)
