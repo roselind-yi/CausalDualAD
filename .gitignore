@@ -44,3 +44,5 @@ results/**/cache/
 
 # ---- 迁移日志 ----
 push_result.txt
+# ---- 结果目录占位（真实结果文件仍入库）----
+results/**/checkpoints/
