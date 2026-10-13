@@ -1,0 +1,51 @@
+{
+  "dataset": "SMD",
+  "n_features": 38,
+  "metrics": {
+    "top_1": 1.0,
+    "top_3": 1.0,
+    "top_5": 1.0,
+    "auroc": 0.99658833845451,
+    "vus_roc": 0.99658833845451,
+    "vus_pr": 0.22875932910042443,
+    "f1": 0.3090909090909091,
+    "precision": 0.1827956989247312,
+    "recall": 1.0,
+    "threshold": 4.867834172930036,
+    "method": "oracle_threshold_search"
+  },
+  "train_losses": [
+    0.9378481592450824,
+    0.7726369821836078,
+    0.7404459251297845,
+    0.717934839309208,
+    0.6978347736691671
+  ],
+  "config": {
+    "model_params": {
+      "window_size": 64,
+      "hidden_dim": 128,
+      "freq_components": 16,
+      "temperature": 0.1,
+      "lambda1": 0.1,
+      "lambda2": 0.01,
+      "num_heads": 4,
+      "num_layers": 3,
+      "use_fixed_weights": false,
+      "n_features": 38,
+      "freq_feature_dim": 64
+    },
+    "train_params": {
+      "epochs": 5,
+      "batch_size": 128,
+      "learning_rate": 0.0005,
+      "patience": 10,
+      "weight_decay": 1e-05,
+      "max_grad_norm": 0.5
+    },
+    "detect_params": {
+      "stride": 1,
+      "batch_size": 256
+    }
+  }
+}

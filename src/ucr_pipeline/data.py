@@ -117,28 +117,127 @@ def preprocess_ucr(train_data, test_data):
     return train_norm, test_norm, scaler
 
 
+# 多变量数据集的目录名 → 文件名前缀映射
+# 实际数据集的文件命名不统一（WADI/creditcard/Water），这里显式声明
+_MV_NAME_MAP = {
+    "SMAP": "SMAP",
+    "MSL": "MSL",
+    "SMD": "SMD",
+    "WADI": "WADI",              # 目录 WaDi，文件前缀 WADI
+    "NIPS_TS_CREDITCARD": "NIPS_TS_creditcard",   # 目录大写，文件小写
+    "NIPS_TS_GECCO": "NIPS_TS_Water",            # 目录 GECCO，文件 Water
+    "NIPS_TS_SWAN": "NIPS_TS_Swan",
+}
+
+# CSV 数据集映射：数据集名 → (train_file, test_file, label_file)
+_MV_CSV_MAP = {
+    "PSM": ("train.csv", "test.csv", "test_label.csv"),
+    "SWAT": ("swat_train2.csv", "swat2.csv", None),  # SWaT 原始数据无独立标签
+}
+
+
 def load_mv_dataset(name, data_root):
     """
     加载多变量数据集
 
+    支持两种格式：
+    1. .npy  —— SMAP / MSL / SMD / WADI / NIPS_TS_*
+    2. .csv  —— PSM / SWaT（CSV 含表头，第一列为时间戳需剔除）
+
     参数:
-        name: 数据集名（SMAP / MSL / SMD）
+        name: 数据集名（不区分大小写，如 SMAP / WADI / PSM / SWAT / NIPS_TS_GECCO）
         data_root: data/ 根目录
     返回:
         (train_data, test_data, test_label)，形状 (T, C) / (T, C) / (T,)
     """
-    name = name.upper()
-    npy_dir = os.path.join(data_root, name)
+    key = name.upper()
+    data_dir = os.path.join(data_root, key)
+    # 目录名可能与请求名不一致（如 WaDi vs WADI），做一次存在性回退
+    if not os.path.isdir(data_dir):
+        for cand in os.listdir(data_root):
+            if cand.upper() == key:
+                data_dir = os.path.join(data_root, cand)
+                break
 
-    if os.path.isdir(npy_dir) and os.path.exists(os.path.join(npy_dir, f"{name}_train.npy")):
-        train = np.load(os.path.join(npy_dir, f"{name}_train.npy"))
-        test = np.load(os.path.join(npy_dir, f"{name}_test.npy"))
-        label_path = os.path.join(npy_dir, f"{name}_test_label.npy")
-        label = np.load(label_path) if os.path.exists(label_path) else None
-    else:
-        print(f"[数据] 找不到多变量数据集 {name}（期望 {npy_dir}/{name}_train.npy）")
-        return None, None, None
+    # ---- .npy 路径 ----
+    prefix = _MV_NAME_MAP.get(key)
+    if prefix:
+        tr_path = os.path.join(data_dir, f"{prefix}_train.npy")
+        te_path = os.path.join(data_dir, f"{prefix}_test.npy")
+        lb_path = os.path.join(data_dir, f"{prefix}_test_label.npy")
+        if os.path.exists(tr_path) and os.path.exists(te_path):
+            train = np.load(tr_path)
+            test = np.load(te_path)
+            label = np.load(lb_path) if os.path.exists(lb_path) else None
+            return _finalize_mv(name, train, test, label)
 
+    # ---- .csv 路径 ----
+    if key in _MV_CSV_MAP:
+        tr_f, te_f, lb_f = _MV_CSV_MAP[key]
+        tr_path = os.path.join(data_dir, tr_f)
+        te_path = os.path.join(data_dir, te_f)
+        if os.path.exists(tr_path) and os.path.exists(te_path):
+            train = _load_csv_features(tr_path)
+            test = _load_csv_features(te_path)
+            label = None
+            if lb_f:
+                lb_path = os.path.join(data_dir, lb_f)
+                if os.path.exists(lb_path):
+                    label = _load_csv_label(lb_path, len(test))
+            return _finalize_mv(name, train, test, label)
+
+    print(f"[数据] 找不到多变量数据集 {name}（查过 {data_dir}）")
+    return None, None, None
+
+
+def _load_csv_features(path):
+    """
+    读取特征 CSV：剔除表头与全 NaN 列/行
+
+    用 pandas 而非 np.loadtxt，因为 PSM 等数据集存在空单元格，
+    loadtxt 会直接抛 ValueError。
+    """
+    import pandas as pd
+
+    df = pd.read_csv(path)
+    # 全 NaN 列（某些传感器全程无数据）
+    df = df.dropna(axis=1, how="all")
+    arr = df.to_numpy(dtype=np.float32, na_value=np.nan)
+    if arr.ndim == 1:
+        arr = arr[:, np.newaxis]
+
+    # 剔除首列时间戳：非负、单调递增、量级远大于其他列中位数
+    if arr.shape[1] > 1:
+        first = arr[:, 0]
+        others = np.nanmedian(np.abs(arr[:, 1:]))
+        with np.errstate(invalid="ignore"):
+            if (
+                np.all(first >= 0)
+                and np.all(np.diff(first) >= 0)
+                and others > 0
+                and np.nanmax(first) > others * 1000
+            ):
+                arr = arr[:, 1:]
+
+    n_nan = int(np.isnan(arr).sum())
+    if n_nan:
+        print(f"[数据] {os.path.basename(path)} 含 {n_nan} 个 NaN（预处理时会填充）")
+    return arr
+
+
+def _load_csv_label(path, expected_len):
+    """读取标签 CSV：取最后一列为标签，二值化"""
+    import pandas as pd
+
+    df = pd.read_csv(path)
+    label = (df.iloc[:, -1].to_numpy(dtype=np.float32, na_value=0.0) > 0).astype(np.int32)
+    if len(label) != expected_len:
+        print(f"[数据] 标签长度 {len(label)} 与测试集 {expected_len} 不一致，按较短的对齐")
+    return label
+
+
+def _finalize_mv(name, train, test, label):
+    """统一后处理：剔除全 NaN 通道、补维度、处理标签"""
     train = np.asarray(train, dtype=np.float32)
     test = np.asarray(test, dtype=np.float32)
     if train.ndim == 1:
@@ -147,6 +246,21 @@ def load_mv_dataset(name, data_root):
         test = test[:, np.newaxis]
     if label is not None:
         label = np.asarray(label).astype(np.int32).squeeze()
+
+    # WADI 等数据集存在部分全 NaN 通道（126 通道中 4 个），必须剔除，
+    # 否则 nan_to_num 填 0 会把标准化统计量拉偏
+    all_nan = np.isnan(train).all(axis=0) | np.isnan(test).all(axis=0)
+    if all_nan.any():
+        keep = ~all_nan
+        train = train[:, keep]
+        test = test[:, keep]
+        print(f"[数据] 剔除 {int(all_nan.sum())} 个全NaN 通道，剩余 {train.shape[1]} 通道")
+
+    # 剔除训练集中的部分 NaN 行（某时间点所有通道都缺失）
+    bad_rows = np.isnan(train).all(axis=1)
+    if bad_rows.any():
+        train = train[~bad_rows]
+        print(f"[数据] 剔除训练集中 {int(bad_rows.sum())} 个全 NaN 时间点")
 
     print(f"[数据] {name}: train={train.shape}, test={test.shape}", end="")
     if label is not None:

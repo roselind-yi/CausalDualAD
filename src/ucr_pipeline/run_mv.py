@@ -47,8 +47,14 @@ from src.ucr_pipeline import (
     default_config,
 )
 
-# 已确认可加载为 (T, C) 的多变量数据集（.npy 格式）
-SUPPORTED = ["SMAP", "MSL", "SMD"]
+# 已适配的多变量数据集
+# .npy：SMAP(25) / MSL(55) / SMD(38) / WADI(126) / NIPS_TS_Creditcard(29) / NIPS_TS_GECCO(9) / NIPS_TS_Swan(38)
+# .csv：PSM(25) / SWaT(51)
+SUPPORTED = [
+    "SMAP", "MSL", "SMD", "WADI",
+    "PSM", "SWAT",
+    "NIPS_TS_Creditcard", "NIPS_TS_GECCO", "NIPS_TS_Swan",
+]
 
 
 def build_config(n_features, args):
@@ -228,8 +234,8 @@ def main():
 
     unknown = [d for d in args.datasets if d.upper() not in SUPPORTED]
     if unknown:
-        print(f"[警告] 这些数据集暂不支持（当前支持 {SUPPORTED}）: {unknown}")
-        print("  SWAT/WADI 是 CSV/其他格式，需先转成 .npy 再跑")
+        print(f"[警告] 这些数据集不在已适配列表中，将尝试直接加载: {unknown}")
+        print(f"  已适配: {SUPPORTED}")
 
     results = {}
     t0 = time.time()
