@@ -1,0 +1,56 @@
+{
+  "dataset": "MSL",
+  "n_features": 55,
+  "aggregate": "max",
+  "pool": "max",
+  "assign_mode": "full",
+  "metrics": {
+    "top_1": 1.0,
+    "top_3": 1.0,
+    "top_5": 1.0,
+    "auroc": 0.5270022505626407,
+    "vus_roc": 0.5270022505626407,
+    "vus_pr": 0.2247815041137014,
+    "f1": 0.3377326565143824,
+    "precision": 0.20464798359535202,
+    "recall": 0.9658064516129032,
+    "threshold": 2.89068257920444,
+    "method": "oracle_threshold_search"
+  },
+  "train_losses": [
+    0.10887378751344624,
+    0.0867998626024004,
+    0.08026466228895718,
+    0.08064854712713332,
+    0.0784365279333932
+  ],
+  "config": {
+    "model_params": {
+      "window_size": 64,
+      "hidden_dim": 128,
+      "freq_components": 16,
+      "temperature": 0.1,
+      "lambda1": 0.1,
+      "lambda2": 0.01,
+      "num_heads": 4,
+      "num_layers": 3,
+      "use_fixed_weights": false,
+      "n_features": 55,
+      "freq_feature_dim": 64,
+      "aggregate": "max",
+      "aggregate_topk": 3
+    },
+    "train_params": {
+      "epochs": 5,
+      "batch_size": 128,
+      "learning_rate": 0.0005,
+      "patience": 10,
+      "weight_decay": 1e-05,
+      "max_grad_norm": 0.5
+    },
+    "detect_params": {
+      "stride": 1,
+      "batch_size": 256
+    }
+  }
+}

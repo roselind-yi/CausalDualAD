@@ -375,18 +375,6 @@ class DualPathModel(nn.Module):
         topk_vals, _ = scores_mv.topk(k, dim=2)
         return topk_vals.mean(dim=2)
 
-    def _prototype_per_channel(self, feat, recon_error_mv):
-        """
-        逐通道原型匹配
-
-        做法：原型路径作用在**重构误差特征**上，而非 hidden 特征。
-        理由：原型路径的语义是"这个点离正常原型有多远"，
-        重构误差恰好是该语义的直接度量，且通道数天然对齐（无需整除条件）。
-
-        保留此方法作为多变量扩展时的实验入口（当前 forward 直接调用 prototype_path）。
-        """
-        return self.prototype_path(recon_error_mv)  # (B, W)
-
     def compute_loss(self, output, x):
         # 重构损失：逐通道
         recon_loss = F.mse_loss(output["reconstruction"], x)

@@ -130,6 +130,8 @@ def run_one(name, args, device=None, save_dir=None):
         window_size=window_size,
         stride=config["detect_params"]["stride"],
         batch_size=config["detect_params"]["batch_size"],
+        pool=getattr(args, "pool", "max"),
+        assign_mode=getattr(args, "assign_mode", "full"),
     )
 
     evaluator = UCREvaluator()
@@ -143,11 +145,23 @@ def run_one(name, args, device=None, save_dir=None):
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
         agg = config["model_params"].get("aggregate", "max")
-        suffix = "" if agg == "max" else f"_{agg}"
+        pool = getattr(args, "pool", "max")
+        assign_mode = getattr(args, "assign_mode", "full")
+        # 文件名后缀：只标注非默认配置，避免目录里堆满文件
+        tags = []
+        if agg != "max":
+            tags.append(agg)
+        if pool != "max":
+            tags.append(f"pool{pool}")
+        if assign_mode != "full":
+            tags.append(f"assign{assign_mode}")
+        suffix = ("_" + "_".join(tags)) if tags else ""
         result = {
             "dataset": name,
             "n_features": n_features,
             "aggregate": agg,
+            "pool": pool,
+            "assign_mode": assign_mode,
             "metrics": metrics,
             "train_losses": train_losses,
             "config": {k: v for k, v in config.items() if k != "data_params"},
@@ -162,6 +176,7 @@ def run_one(name, args, device=None, save_dir=None):
         "dataset": name,
         "n_features": n_features,
         "aggregate": config["model_params"].get("aggregate", "max"),
+        "pool": getattr(args, "pool", "max"),
         "metrics": metrics,
     }
 
@@ -236,6 +251,12 @@ def main():
                         help="通道分数聚合方式（消融实验用）")
     parser.add_argument("--aggregate-topk", type=int, default=3,
                         help="topk_mean 策略下的 k 值")
+    parser.add_argument("--pool", type=str, default="max",
+                        choices=["max", "mean", "topk_mean"],
+                        help="窗口内分数池化方式（max 可避免稀疏异常被稀释）")
+    parser.add_argument("--assign-mode", type=str, default="full",
+                        choices=["full", "center"],
+                        help="分数分配到时间点的方式（full 覆盖整个窗口，无未覆盖点）")
     parser.add_argument("--max-points", type=int, default=None,
                         help="每个数据集最多用多少时间点（调试用）")
     parser.add_argument("--start-offset", type=int, default=0,

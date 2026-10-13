@@ -1,0 +1,33 @@
+{
+  "results": {
+    "SMD": {
+      "dataset": "SMD",
+      "n_features": 38,
+      "aggregate": "max",
+      "pool": "max",
+      "metrics": {
+        "top_1": 0.0,
+        "top_3": 0.0,
+        "top_5": 0.0,
+        "auroc": 0.631864771462888,
+        "vus_roc": 0.631864771462888,
+        "vus_pr": 0.0029788274893061666,
+        "f1": 0.010526315789473682,
+        "precision": 0.005291005291005291,
+        "recall": 1.0,
+        "threshold": 3.71898683719337,
+        "method": "oracle_threshold_search"
+      }
+    }
+  },
+  "averages": {
+    "auroc": 0.631864771462888,
+    "vus_roc": 0.631864771462888,
+    "vus_pr": 0.0029788274893061666,
+    "top_1": 0.0,
+    "f1": 0.010526315789473682,
+    "precision": 0.005291005291005291,
+    "recall": 1.0
+  },
+  "elapsed_seconds": 635.3102445602417
+}

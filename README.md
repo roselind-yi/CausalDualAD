@@ -13,6 +13,7 @@
 | 文件 | 内容 |
 |---|---|
 | [docs/项目现状报告.md](docs/项目现状报告.md) | **从这里开始** —— 现状、实验结果、架构决策、待办清单 |
+| [docs/工程发现记录.md](docs/工程发现记录.md) | ⚠️ **写论文前必读** —— 代码缺陷、数据陷阱、方法发现 |
 | [docs/TSAD研究现状调研_2026-10.md](docs/TSAD研究现状调研_2026-10.md) | 领域研究现状 + 20 篇核心论文 + 可行性判断 |
 | [docs/DATASET.md](docs/DATASET.md) | 数据集目录结构与获取方式 |
 | [docs/thesis/](docs/thesis/) | 论文草稿（markdown + LaTeX） |
@@ -43,9 +44,13 @@ python -m src.ucr_pipeline.run_ucr --ucr-path ./data --dataset-ids 1 2 3 4 5
 python -m src.ucr_pipeline.run_mv --data-root ./data --datasets SMAP MSL SMD \
     --epochs 10 --save-dir results/mv
 
-# CPU 友好的调试配置
+# 调试（CPU 友好）
 python -m src.ucr_pipeline.run_mv --datasets SMAP \
     --max-points 8000 --start-offset 3000 --window-size 64 --batch-size 128 --epochs 5
+
+# 消融：窗口池化对比（验证 max 池化的必要性）
+python -m src.ucr_pipeline.run_mv --datasets SMAP --pool mean --assign-mode center  # 旧行为
+python -m src.ucr_pipeline.run_mv --datasets SMAP --pool max  --assign-mode full   # 新默认
 ```
 
 ---
@@ -69,6 +74,18 @@ Transformer 编码器（4 头 3 层）
 ```
 
 **max 聚合语义**：任一通道异常 → 该时间点异常。
+
+**三个正交配置维度**（消融实验必须正交，详见 [工程发现记录](docs/工程发现记录.md)）：
+
+| 维度 | 参数 | 取值 | 默认 |
+|---|---|---|---|
+| 通道聚合 | `--aggregate` | max / mean / topk_mean | max |
+| 窗口池化 | `--pool` | max / mean / topk_mean | **max** |
+| 分数分配 | `--assign-mode` | full / center | full |
+
+> ⚠️ 2026-10-13 修复：此前 `pool` 固定为 `mean`，导致稀疏异常被稀释
+> （64 点窗口里 5 个异常点 → 分数稀释到 0.078 倍），SMAP AUROC 因此从 0.80 掉到 0.48。
+> **池化必须是 max，否则 VUS-PR 与跨数据集比较都不可信。**
 
 ---
 

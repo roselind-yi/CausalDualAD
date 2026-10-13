@@ -172,20 +172,31 @@ class UCRTrainer:
     #  异常检测（批量向量化）
     # ------------------------------------------------------------------ #
     @torch.no_grad()
-    def detect_anomalies(self, test_data, window_size=100, stride=1, batch_size=256):
+    def detect_anomalies(
+        self, test_data, window_size=100, stride=1, batch_size=256,
+        pool="max", assign_mode="full",
+    ):
         """
-        批量异常检测 — 修复版
-
-        旧代码逐窗口 for 循环推理 + Python for 循环分配分数，极慢。
-        新代码批量推理 + scatter_add 向量化聚合。
+        批量异常检测
 
         参数:
             test_data: 标准化后的测试序列 (T,) 或 (T, C)
             window_size / stride: 滑窗参数
-            batch_size: 推理批量（默认 256，GPU 上可更大）
-        返回:
-            anomaly_scores: (len(test_data),) 每个时间点的异常分数
-                （多变量时分数 = 各通道分数的 max 聚合）
+            batch_size: 推理批量
+            pool: 窗口内分数池化方式
+                 - "max"      取窗口内最大分（默认）
+                 - "mean"     取窗口内平均分（旧实现，会稀释稀疏异常）
+                 - "topk_mean" 取窗口内最高 k 个分的平均
+            assign_mode: 分数分配到时间点的方式
+                 - "full"    分配到整个窗口 (cs=ws, ce=ws+W)
+                 - "center"  只分配到中间 1/3（旧实现，首尾 W//3 点无分数）
+
+        重要（2026-10-13 修复）：
+            旧实现固定用 mean 池化 + center 分配，导致两个缺陷：
+            1)稀疏异常被稀释 —— 窗口 64 点里只有 5 个异常点时，
+               该点分数被 59 个正常点稀释到 0.078 倍；VUS-PR/F1 严重受影响
+            2) 首尾各W//3 个点永远得不到分数（靠边界值填充，分数是编造的）
+            现改为 max 池化 + full 分配，两者都可通过参数切回旧行为做消融。
         """
         self.model.eval()
         n = len(test_data)
@@ -208,7 +219,8 @@ class UCRTrainer:
         n_windows = len(starts)
         print(
             f"[检测] {n_windows} 个窗口, 通道={n_features}, "
-            f"batch_size={batch_size}, device={self.device}"
+            f"batch_size={batch_size}, pool={pool}, assign={assign_mode}, "
+            f"device={self.device}"
         )
 
         t0 = time.time()
@@ -223,34 +235,57 @@ class UCRTrainer:
             )
 
             output = self.model(x)
-            # fused_score 已在 model 内做过 max 聚合 → (B, W)
+            # fused_score 已在 model 内做过通道聚合 → (B, W)
             fused = output["fused_score"]
             fused_np = fused.cpu().numpy()  # (B, W)
 
-            # 向量化分数分配：每个窗口的中间 1/3 区间分配平均分数
+            # 窗口内池化：max 保留稀疏异常，不被正常点稀释
+            if pool == "max":
+                pooled = fused_np.max(axis=1)
+            elif pool == "mean":
+                pooled = fused_np.mean(axis=1)
+            elif pool == "topk_mean":
+                k = max(1, min(3, fused_np.shape[1]))
+                part = np.partition(fused_np, -k, axis=1)[:, -k:]
+                pooled = part.mean(axis=1)
+            else:
+                raise ValueError(f"pool 必须是 max / mean / topk_mean，当前为 {pool}")
+
+            # 分数分配到时间点
             for i, ws in enumerate(window_starts):
-                cs = ws + window_size // 3
-                ce = ws + 2 * window_size // 3
+                if assign_mode == "full":
+                    cs, ce = ws, ws + window_size
+                else:  # center（旧行为）
+                    cs = ws + window_size // 3
+                    ce = ws + 2 * window_size // 3
                 ce = min(ce, n)
                 if ce > cs:
-                    window_score = float(np.mean(fused_np[i]))
-                    score_sum[cs:ce] += window_score
+                    score_sum[cs:ce] += pooled[i]
                     count[cs:ce] += 1.0
 
-        count[count == 0] = 1.0
+        # 记录未被任何窗口覆盖的点（用于填充与统计）
+        count_zero = count == 0
+
+        # 避免除零：未覆盖点先置 1，稍后用边界值填充
+        count[count_zero] = 1.0
         anomaly_scores = score_sum / count
 
         # 前后未覆盖的区域用最近的有效分数填充
-        valid = np.where(count > 1.0)[0]
-        if len(valid) > 0:
-            first_valid, last_valid = valid[0], valid[-1]
-            if first_valid > 0:
-                anomaly_scores[:first_valid] = anomaly_scores[first_valid]
-            if last_valid < n - 1:
-                anomaly_scores[last_valid + 1 :] = anomaly_scores[last_valid]
+        if count_zero.any():
+            covered = np.where(~count_zero)[0]
+            if len(covered) > 0:
+                first_valid, last_valid = covered[0], covered[-1]
+                if first_valid > 0:
+                    anomaly_scores[:first_valid] = anomaly_scores[first_valid]
+                if last_valid < n - 1:
+                    anomaly_scores[last_valid + 1 :] = anomaly_scores[last_valid]
 
         elapsed = time.time() - t0
-        print(f"[检测] 完成, 耗时 {elapsed:.1f}s ({n_windows / max(elapsed, 0.01):.0f} 窗口/秒)")
+        n_uncovered = int(count_zero.sum())
+        print(
+            f"[检测] 完成, 耗时 {elapsed:.1f}s ({n_windows / max(elapsed, 0.01):.0f} 窗口/秒)"
+            + (f", 未覆盖 {n_uncovered} 点" if n_uncovered else "")
+        )
         return anomaly_scores
 
     # ------------------------------------------------------------------ #

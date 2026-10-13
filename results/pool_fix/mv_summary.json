@@ -1,0 +1,33 @@
+{
+  "results": {
+    "SMAP": {
+      "dataset": "SMAP",
+      "n_features": 25,
+      "aggregate": "max",
+      "pool": "max",
+      "metrics": {
+        "top_1": 0.0,
+        "top_3": 0.0,
+        "top_5": 0.0,
+        "auroc": 0.8034811043811081,
+        "vus_roc": 0.8034811043811081,
+        "vus_pr": 0.02492147580863978,
+        "f1": 0.06765578635014836,
+        "precision": 0.035625,
+        "recall": 0.6705882352941176,
+        "threshold": 3.6704259335994722,
+        "method": "oracle_threshold_search"
+      }
+    }
+  },
+  "averages": {
+    "auroc": 0.8034811043811081,
+    "vus_roc": 0.8034811043811081,
+    "vus_pr": 0.02492147580863978,
+    "top_1": 0.0,
+    "f1": 0.06765578635014836,
+    "precision": 0.035625,
+    "recall": 0.6705882352941176
+  },
+  "elapsed_seconds": 348.8337426185608
+}
